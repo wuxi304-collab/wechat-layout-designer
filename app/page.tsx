@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type IconName =
   | "brand"
@@ -72,6 +72,65 @@ const themes = {
 type ThemeKey = keyof typeof themes;
 type InspectorTab = "智能" | "样式" | "品牌";
 
+type ArticleBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "heading"; text: string }
+  | { type: "quote"; text: string }
+  | { type: "list"; items: string[] };
+
+function parseArticle(markdown: string) {
+  const lines = markdown.split(/\r?\n/).map((line) => line.trim());
+  let title = "未命名文章";
+  const blocks: ArticleBlock[] = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push({ type: "paragraph", text: paragraph.join(" ") });
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (list.length) blocks.push({ type: "list", items: list });
+    list = [];
+  };
+
+  lines.forEach((line) => {
+    if (!line) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+    if (line.startsWith("# ")) {
+      title = line.slice(2).trim();
+      return;
+    }
+    if (line.startsWith("## ")) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading", text: line.slice(3).replace(/^[一二三四五六七八九十]+、/, "") });
+      return;
+    }
+    if (line.startsWith("> ")) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "quote", text: line.slice(2) });
+      return;
+    }
+    if (/^[-*] /.test(line)) {
+      flushParagraph();
+      list.push(line.slice(2));
+      return;
+    }
+    paragraph.push(line.replace(/\*\*(.*?)\*\*/g, "$1"));
+  });
+  flushParagraph();
+  flushList();
+
+  const firstParagraph = blocks.find((block) => block.type === "paragraph") as { type: "paragraph"; text: string } | undefined;
+  const subtitle = firstParagraph ? `${firstParagraph.text.slice(0, 42)}${firstParagraph.text.length > 42 ? "……" : ""}` : "让内容建立秩序，让观点获得形状。";
+  return { title, subtitle, blocks };
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<ThemeKey>("editorial");
   const [inspector, setInspector] = useState<InspectorTab>("智能");
@@ -82,9 +141,20 @@ export default function Home() {
   const [markdown, setMarkdown] = useState(sampleMarkdown);
   const [toast, setToast] = useState("");
   const [adopted, setAdopted] = useState<string[]>([]);
+  const articleRef = useRef<HTMLElement>(null);
 
   const currentTheme = themes[theme];
   const wordCount = useMemo(() => markdown.replace(/[#>*`\-]/g, "").trim().length, [markdown]);
+  const article = useMemo(() => parseArticle(markdown), [markdown]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("wechat-layout-designer-draft");
+    if (saved) setMarkdown(saved);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("wechat-layout-designer-draft", markdown);
+  }, [markdown]);
 
   function notify(message: string) {
     setToast(message);
@@ -93,6 +163,36 @@ export default function Home() {
 
   function adopt(id: string) {
     setAdopted((items) => (items.includes(id) ? items.filter((item) => item !== id) : [...items, id]));
+  }
+
+  async function copyArticle() {
+    const source = articleRef.current;
+    if (!source) return;
+
+    const clone = source.cloneNode(true) as HTMLElement;
+    const sourceNodes = [source, ...Array.from(source.querySelectorAll<HTMLElement>("*"))];
+    const cloneNodes = [clone, ...Array.from(clone.querySelectorAll<HTMLElement>("*"))];
+    const properties = ["display", "margin", "padding", "color", "backgroundColor", "border", "borderTop", "borderRight", "borderBottom", "borderLeft", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textDecoration", "width", "maxWidth", "boxSizing", "whiteSpace", "wordBreak", "verticalAlign"] as const;
+
+    sourceNodes.forEach((node, index) => {
+      const target = cloneNodes[index];
+      const computed = window.getComputedStyle(node);
+      properties.forEach((property) => target.style.setProperty(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`), computed[property]));
+      target.removeAttribute("class");
+      target.removeAttribute("id");
+    });
+
+    const html = clone.outerHTML;
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([source.innerText], { type: "text/plain" }) })]);
+      } else {
+        await navigator.clipboard.writeText(source.innerText);
+      }
+      notify("已复制微信兼容富文本");
+    } catch {
+      notify("浏览器未允许复制，请重试");
+    }
   }
 
   return (
@@ -165,7 +265,7 @@ export default function Home() {
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div>
           <div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
 
-          <article className="article-page">
+          <article className="article-page" ref={articleRef}>
             <header className="article-brandline">
               <div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div>
               <span className="article-category">产业观察 / 028</span>
@@ -173,25 +273,21 @@ export default function Home() {
 
             <section className="article-title-block">
               <span className="article-eyebrow">EDITORIAL NOTE</span>
-              <h1>当成本拼不过青拓之后，<br />我们还能卖什么？</h1>
-              <p>低价是最直接的武器，也正在成为最危险的依赖。</p>
+              <h1>{article.title}</h1>
+              <p>{article.subtitle}</p>
               <div className="article-byline"><span>主编：钢铁私塾 唐淼</span><i /></div>
             </section>
 
             <div className="article-body">
-              <p>价格战从来没有真正的赢家。对不锈钢贸易商而言，低价曾是最直接的武器，也正在成为最危险的依赖。</p>
-              <p className="lead-paragraph">在产能与效率的巨大机器面前，单纯依靠价差生存的空间，正像退潮后的水洼，一寸寸见底。</p>
-
-              <section className="chapter-heading"><span>01</span><div><small>PRICE IS NOT CAPABILITY</small><h2>低价不是能力，只是阶段性结果</h2></div></section>
-              <p>真正决定客户是否长期留下来的，从来不是某一吨便宜了五十元，而是材料是否选对、交期是否可靠、问题能否有人负责。</p>
-              <blockquote><span>观点</span><p>当产品越来越接近，专业判断本身就会成为产品。</p></blockquote>
-
-              <section className="chapter-heading"><span>02</span><div><small>DELIVER CERTAINTY</small><h2>从卖材料，转向交付确定性</h2></div></section>
-              <ol className="designed-list">
-                <li><span>01</span><p><b>把牌号讲明白</b><small>不是报出一个材质名称，而是解释适用边界。</small></p></li>
-                <li><span>02</span><p><b>把标准说清楚</b><small>标准不是装饰，是订货与责任的共同语言。</small></p></li>
-                <li><span>03</span><p><b>把风险放到前面</b><small>专业不是事后解释，是事前判断。</small></p></li>
-              </ol>
+              {article.blocks.map((block, index) => {
+                if (block.type === "paragraph") return <p className={index === 1 ? "lead-paragraph" : ""} key={`${block.type}-${index}`}>{block.text}</p>;
+                if (block.type === "heading") {
+                  const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length;
+                  return <section className="chapter-heading" key={`${block.type}-${index}`}><span>{String(chapter).padStart(2, "0")}</span><div><small>EDITORIAL CHAPTER</small><h2>{block.text}</h2></div></section>;
+                }
+                if (block.type === "quote") return <blockquote key={`${block.type}-${index}`}><span>观点</span><p>{block.text}</p></blockquote>;
+                return <ol className="designed-list" key={`${block.type}-${index}`}>{block.items.map((item, itemIndex) => <li key={item}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{item}</b><small>已识别为关键动作，建议保留独立层级。</small></p></li>)}</ol>;
+              })}
             </div>
 
             <footer className="article-footer"><span>钢铁私塾</span><p>我们不贩卖焦虑，只研究变化。</p></footer>
@@ -230,7 +326,7 @@ export default function Home() {
               <div className="section-heading"><div><span>交付健康度</span><small>粘贴公众号前最后检查</small></div><span className="pass-tag">通过</span></div>
               <ul><li><Icon name="check" size={15} />层级与段落 <span>正常</span></li><li><Icon name="check" size={15} />图片与链接 <span>正常</span></li><li><Icon name="check" size={15} />微信样式兼容 <span>正常</span></li></ul>
             </section>
-            <button className="copy-delivery" onClick={() => notify("已复制微信兼容富文本")}><Icon name="copy" />复制公众号排版</button>
+            <button className="copy-delivery" onClick={copyArticle}><Icon name="copy" />复制公众号排版</button>
           </div>
         )}
 
