@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { gsap } from "gsap";
 
 type IconName =
   | "brand" | "document" | "structure" | "style" | "assets" | "check"
@@ -129,8 +130,12 @@ export default function Home() {
   const [syncedTypes, setSyncedTypes] = useState<BlockType[]>([]);
   const [componentQuery, setComponentQuery] = useState("");
   const [versions, setVersions] = useState<{ markdown: string; label: string }[]>([]);
+  const studioRef = useRef<HTMLElement>(null);
   const articleRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const previousStage = useRef(stage);
+  const previousInspector = useRef(inspector);
+  const previousArticleStyle = useRef(`${theme}-${layoutMode}`);
 
   const currentTheme = themes[theme];
   const wordCount = useMemo(() => markdown.replace(/[#>*`\-]/g, "").trim().length, [markdown]);
@@ -161,6 +166,69 @@ export default function Home() {
     const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 2, markdown, updatedAt: Date.now() })), 450);
     return () => window.clearTimeout(timer);
   }, [markdown]);
+
+  useLayoutEffect(() => {
+    if (!studioRef.current) return;
+    const media = gsap.matchMedia();
+    media.add("(prefers-reduced-motion: no-preference)", () => {
+      const context = gsap.context(() => {
+        const entrance = gsap.timeline({ defaults: { ease: "power3.out" } });
+        entrance
+          .from(".topbar", { y: -8, opacity: 0.94, duration: 0.46 })
+          .from(".canvas-toolbar", { y: -7, opacity: 0.94, duration: 0.34 }, "-=0.28")
+          .from(".article-page", { y: 26, scale: 0.989, duration: 0.72, ease: "power2.out" }, "-=0.16")
+          .from(".workflow-item", { x: -8, opacity: 0.9, duration: 0.28, stagger: 0.04 }, "-=0.54")
+          .from(".inspector-content > *", { y: 8, opacity: 0.92, duration: 0.3, stagger: 0.05 }, "<");
+
+        gsap.to(".jiangnan-mist", { xPercent: 1.15, yPercent: -0.35, scale: 1.018, duration: 17, repeat: -1, yoyo: true, ease: "sine.inOut" });
+        gsap.to(".save-indicator i", { scale: 1.55, opacity: 0.38, duration: 1.9, repeat: -1, yoyo: true, ease: "sine.inOut" });
+      }, studioRef);
+      return () => context.revert();
+    });
+    return () => media.revert();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!studioRef.current || previousStage.current === stage) return;
+    previousStage.current = stage;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(".left-context > *", { y: 9, opacity: 0.78 }, { y: 0, opacity: 1, duration: 0.38, stagger: 0.045, ease: "power2.out", clearProps: "transform,opacity" });
+      gsap.fromTo(".workflow-item.active .workflow-icon", { scale: 0.86, rotate: -5 }, { scale: 1, rotate: 0, duration: 0.42, ease: "back.out(1.7)", clearProps: "transform" });
+    }, studioRef);
+    return () => context.revert();
+  }, [stage]);
+
+  useLayoutEffect(() => {
+    if (!studioRef.current || previousInspector.current === inspector) return;
+    previousInspector.current = inspector;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(".inspector-content > *", { y: 12, opacity: 0.78 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.055, ease: "power2.out", clearProps: "transform,opacity" });
+    }, studioRef);
+    return () => context.revert();
+  }, [inspector]);
+
+  useLayoutEffect(() => {
+    const articleStyle = `${theme}-${layoutMode}`;
+    if (!studioRef.current || previousArticleStyle.current === articleStyle) return;
+    previousArticleStyle.current = articleStyle;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(".article-page", { scale: 0.993, filter: "blur(1.4px)" }, { scale: 1, filter: "blur(0px)", duration: 0.52, ease: "power2.out", clearProps: "transform,filter" });
+      gsap.fromTo(".article-page h1, .article-page h2, .article-page blockquote", { y: 6, opacity: 0.72 }, { y: 0, opacity: 1, duration: 0.38, stagger: 0.045, ease: "power2.out", clearProps: "transform,opacity" });
+    }, studioRef);
+    return () => context.revert();
+  }, [theme, layoutMode]);
+
+  useLayoutEffect(() => {
+    if (!studioRef.current || !selected || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(".block-toolbar", { y: -7, scale: 0.965, opacity: 0.72 }, { y: 0, scale: 1, opacity: 1, duration: 0.3, ease: "back.out(1.55)", clearProps: "transform,opacity" });
+      gsap.fromTo(".selectable-block.is-selected", { backgroundColor: "rgba(159, 61, 47, 0.12)" }, { backgroundColor: "rgba(159, 61, 47, 0.035)", duration: 0.58, ease: "power2.out", clearProps: "backgroundColor" });
+    }, studioRef);
+    return () => context.revert();
+  }, [selected]);
 
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(""), 2400); }
 
@@ -244,7 +312,7 @@ export default function Home() {
   });
 
   return (
-    <main className="studio-shell" style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
+    <main ref={studioRef} className="studio-shell" style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>WECHAT EDITORIAL STUDIO</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
@@ -286,6 +354,7 @@ export default function Home() {
           </div>
         </div>
 
+        <div className="jiangnan-mist" aria-hidden="true" />
         <div className={`canvas-stage ${preview}`} onClick={() => setSelected(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const snippet = event.dataTransfer.getData("text/plain"); if (snippet) insertComponent(snippet, "语义"); }}>
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div><div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
