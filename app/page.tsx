@@ -51,10 +51,10 @@ const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么
 - 把售后责任写进流程`;
 
 const themes = {
-  editorial: { name: "编辑部", accent: "#b84332", ink: "#201f1b", paper: "#fbfaf5" },
-  industrial: { name: "工业纪要", accent: "#286b66", ink: "#172524", paper: "#f3f6f2" },
-  eastern: { name: "东方章法", accent: "#8a6337", ink: "#29231d", paper: "#fbf5e8" },
-  minimal: { name: "克制蓝", accent: "#315f8c", ink: "#19242f", paper: "#ffffff" },
+  editorial: { name: "编辑部", accent: "#9f3d2f", ink: "#1f241f", paper: "#fffdf7" },
+  industrial: { name: "工业纪要", accent: "#35655e", ink: "#1b2926", paper: "#f7f8f2" },
+  eastern: { name: "东方章法", accent: "#866137", ink: "#2a251e", paper: "#fff9eb" },
+  minimal: { name: "克制蓝", accent: "#3c647c", ink: "#202a30", paper: "#fffefa" },
 };
 
 type ThemeKey = keyof typeof themes;
@@ -117,8 +117,8 @@ export default function Home() {
   const [inspector, setInspector] = useState<InspectorTab>("智能");
   const [stage, setStage] = useState<StageKey>("编排");
   const [preview, setPreview] = useState<"phone" | "desktop">("phone");
-  const [fontSize, setFontSize] = useState(16);
-  const [lineHeight, setLineHeight] = useState(1.82);
+  const [fontSize, setFontSize] = useState(17);
+  const [lineHeight, setLineHeight] = useState(1.88);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("balanced");
   const [sourceOpen, setSourceOpen] = useState(false);
   const [markdown, setMarkdown] = useState(sampleMarkdown);
@@ -168,9 +168,9 @@ export default function Home() {
 
   function applyLayout(mode: LayoutMode) {
     setLayoutMode(mode);
-    if (mode === "calm") { setFontSize(16); setLineHeight(1.94); }
-    if (mode === "balanced") { setFontSize(16); setLineHeight(1.82); }
-    if (mode === "editorial") { setFontSize(17); setLineHeight(1.72); }
+    if (mode === "calm") { setFontSize(17); setLineHeight(2); }
+    if (mode === "balanced") { setFontSize(17); setLineHeight(1.88); }
+    if (mode === "editorial") { setFontSize(18); setLineHeight(1.78); }
     setAdopted(["quote", "list", "rhythm"]);
     notify(`已按“${mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}”策略重排全文`);
   }
@@ -319,7 +319,7 @@ export default function Home() {
           <button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制公众号排版</button>
         </div>}
 
-        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section"><div className="section-heading"><div><span>文章气质</span><small>原创令牌系统，改变章法而非贴皮</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 15—17px</small></span><output>{fontSize}px</output></label><input type="range" min="14" max="19" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.5" max="2.1" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section"><div className="section-heading"><div><span>文章气质</span><small>原创令牌系统，改变章法而非贴皮</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
 
         {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.accent }}/>当前主题<button onClick={() => setInspector("样式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.ink }}/>墨黑<button onClick={() => setInspector("样式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => notify("品牌署名编辑将在下一版开放")}>编辑</button></label><label><span>结尾</span><b>固定品牌结尾</b><button onClick={() => notify("品牌结尾编辑将在下一版开放")}>编辑</button></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><div className="brand-consistency"><strong>100%</strong><div><i/><span>颜色、署名与语气均一致</span></div></div></section></div>}
       </aside>
