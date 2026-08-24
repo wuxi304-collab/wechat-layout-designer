@@ -4756,3 +4756,288 @@ body { background: var(--jn-rain-200); color: var(--jn-ink-900); }
   .article-page[class*="font-"] .article-body .selectable-block > p,
   .font-profile-grid > button > span { transition: none; }
 }
+
+/* V2.6 · 细节精修：字有骨，签有别，动作有回声 */
+
+/* 01 / 中文字面：校准宋、楷、黑三套字的笔画重量与标点节奏 */
+.article-page {
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+.article-title-block h1,
+.chapter-heading h2,
+.article-subheading {
+  font-synthesis: none;
+  hanging-punctuation: first allow-end last;
+  line-break: strict;
+  text-spacing-trim: trim-start;
+}
+.article-title-block h1 {
+  letter-spacing: clamp(-.035em, var(--md-title-tracking, -.025em), -.012em);
+  text-wrap: balance;
+}
+.article-title-block > p {
+  letter-spacing: .018em;
+  text-align: justify;
+  text-justify: inter-ideograph;
+}
+.article-body .selectable-block > p {
+  line-break: strict;
+  text-align: justify;
+  text-justify: inter-ideograph;
+  hanging-punctuation: allow-end last;
+}
+.article-page.font-classic .article-body .selectable-block > p { font-weight: 425; }
+.article-page.font-literary .article-body .selectable-block > p { font-weight: 450; }
+.article-page.font-clear .article-body .selectable-block > p { font-weight: 420; }
+.article-byline,
+.article-account small,
+.article-category { font-variant-numeric: lining-nums tabular-nums; }
+@supports (text-autospace: normal) {
+  .article-title-block h1,
+  .article-title-block > p,
+  .article-body { text-autospace: normal; }
+}
+
+/* 02 / 导航与标签：用墨线、印记、留白区分状态，不再堆相似胶囊 */
+.workflow-item {
+  border-radius: 4px 17px 17px 4px;
+  transition: color .24s ease, background-color .3s var(--soft-ease), transform .32s var(--soft-ease);
+}
+.workflow-item:hover { transform: translateX(2px); }
+.workflow-item.active {
+  background: linear-gradient(90deg, rgba(130, 158, 144, .14), rgba(255,255,255,.035) 68%, transparent);
+}
+.workflow-item.active::before {
+  top: 15px;
+  bottom: 15px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #c36b58, #8a4136);
+  box-shadow: 0 0 0 1px rgba(243, 217, 205, .04), 0 5px 15px rgba(123, 53, 42, .18);
+}
+.workflow-icon {
+  border-radius: 9px 15px 15px 9px;
+  transition: border-color .28s ease, background-color .28s ease, color .28s ease, transform .36s var(--soft-ease), box-shadow .36s ease;
+}
+.workflow-item:hover .workflow-icon { transform: rotate(-1.2deg) translateY(-1px); }
+.workflow-item.active .workflow-icon {
+  border-radius: 11px 17px 17px 11px;
+  box-shadow: 0 0 0 4px rgba(128, 154, 141, .11), 0 7px 18px rgba(16, 28, 22, .12);
+}
+.workflow-index { opacity: .78; }
+.workflow-item.active .workflow-index { opacity: 1; }
+
+.inspector-tabs button { isolation: isolate; }
+.inspector-tabs button span { transition: color .25s ease, letter-spacing .28s var(--soft-ease), transform .3s var(--soft-ease); }
+.inspector-tabs button:hover span { letter-spacing: .055em; }
+.inspector-tabs button.active span { letter-spacing: .075em; }
+.inspector-tabs button.active i {
+  right: 27px;
+  left: 27px;
+  height: 2px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, transparent, #9e4d3e 23%, #6f8b7d 78%, transparent);
+}
+.inspector-tabs button.active::after {
+  content: "";
+  position: absolute;
+  display: block;
+  right: 23px;
+  bottom: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #9d4c3d;
+  opacity: .78;
+  box-shadow: 0 0 0 3px rgba(157, 76, 61, .07);
+}
+
+.strategy-switch button { position: relative; }
+.strategy-switch button::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 0;
+  width: 1px;
+  background: rgba(68, 82, 74, .11);
+}
+.strategy-switch button:first-child::before { display: none; }
+.strategy-switch button.active { background: linear-gradient(180deg, rgba(255,255,255,.42), rgba(228, 235, 229, .38)) !important; }
+.pass-tag,
+.warning-tag {
+  position: relative;
+  padding: 4px 10px 4px 18px;
+  border-radius: 2px 10px 10px 2px;
+}
+.pass-tag { background: rgba(112, 148, 124, .075); }
+.warning-tag { background: rgba(181, 135, 72, .075); }
+
+/* 03 / 版式与字体选择：卡片退后，字样和使用状态站到前面 */
+.markdown-style-gallery { gap: 8px; }
+.markdown-style-gallery > button,
+.font-profile-grid > button {
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px 18px 18px 7px;
+}
+.markdown-style-gallery > button::before,
+.font-profile-grid > button::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 3px 3px 0;
+  background: #768d80;
+  opacity: 0;
+  transform: scaleY(.34);
+  transition: opacity .24s ease, transform .36s var(--soft-ease);
+}
+.markdown-style-gallery > button:hover::before,
+.markdown-style-gallery > button.active::before,
+.font-profile-grid > button:hover::before,
+.font-profile-grid > button.active::before { opacity: .9; transform: scaleY(1); }
+.markdown-style-gallery > button.active,
+.font-profile-grid > button.active {
+  border-color: rgba(91, 121, 105, .31);
+  background: linear-gradient(98deg, rgba(231, 238, 230, .72), rgba(255, 253, 247, .52));
+  box-shadow: 0 8px 20px rgba(41, 55, 47, .05);
+}
+.md-style-copy strong,
+.font-profile-grid b { text-wrap: balance; }
+.md-style-index {
+  min-width: 38px;
+  color: #8d928b;
+  font-size: 9.5px;
+}
+.markdown-style-gallery > button.active .md-style-index {
+  color: #8f493d;
+  letter-spacing: .06em;
+}
+.font-profile-grid > button > span {
+  border: 1px solid rgba(78, 94, 84, .09);
+  border-radius: 8px 18px 18px 8px;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255,255,255,.82), transparent 42%),
+    #f1eee4;
+  box-shadow: inset 0 1px rgba(255,255,255,.68);
+}
+.font-profile-grid > button.active > span {
+  color: #27362f;
+  box-shadow: inset 0 1px rgba(255,255,255,.7), 0 7px 17px rgba(52, 67, 58, .08);
+}
+.font-profile-grid i {
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(82, 102, 91, .18);
+}
+.font-profile-grid button.active i { border-bottom-color: rgba(145, 73, 59, .4); }
+
+/* 04 / 操作控件：放大有效点击面，让轻重动作各自有分寸 */
+.quick-style-cycle,
+.writing-mode-toggle,
+.source-actions .source-action,
+.primary-action,
+.quiet-action,
+.apply-all,
+.copy-delivery {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px 15px 15px 6px !important;
+  -webkit-tap-highlight-color: transparent;
+}
+.quick-style-cycle,
+.writing-mode-toggle { min-height: 35px !important; }
+.quick-style-cycle::before,
+.writing-mode-toggle::before,
+.source-actions .source-action::before,
+.primary-action::before,
+.apply-all::before,
+.copy-delivery::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,.16) 50%, transparent 80%);
+  opacity: 0;
+  transform: translateX(-45%);
+  transition: opacity .24s ease, transform .46s var(--soft-ease);
+  pointer-events: none;
+}
+.quick-style-cycle:hover::before,
+.writing-mode-toggle:hover::before,
+.source-actions .source-action:hover::before,
+.primary-action:hover::before,
+.apply-all:hover::before,
+.copy-delivery:hover::before { opacity: .8; transform: translateX(45%); }
+.quick-style-cycle:active,
+.writing-mode-toggle:active,
+.source-actions .source-action:active,
+.primary-action:active,
+.apply-all:active,
+.copy-delivery:active { transform: translateY(1px) scale(.992); }
+.source-actions .paste-action {
+  border-color: rgba(95, 128, 110, .28);
+  background: linear-gradient(100deg, rgba(224, 235, 226, .8), rgba(247, 246, 239, .62));
+  box-shadow: inset 2px 0 #789181;
+}
+.source-actions .clear-action {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: inset 0 -1px rgba(157, 81, 65, .22);
+}
+.source-actions .import-file { background: rgba(255, 254, 249, .5); }
+.source-action svg { flex: 0 0 auto; }
+.source-action:disabled { filter: grayscale(.35); }
+
+/* 05 / 纸与反馈：阴影更薄，选区更静，过渡收在一次呼吸里 */
+.paper-frame {
+  filter: drop-shadow(0 28px 38px rgba(35, 47, 40, .13));
+  transition: filter .45s ease, transform .5s var(--soft-ease);
+}
+.canvas-stage:hover .paper-frame { filter: drop-shadow(0 31px 43px rgba(35, 47, 40, .155)); }
+.article-page { transition: background-color .38s ease, color .38s ease, box-shadow .42s ease; }
+.selectable-block {
+  border-radius: 2px 8px 8px 2px;
+  transition: outline-color .22s ease, background-color .28s ease, box-shadow .28s ease;
+}
+.selectable-block:hover { background: color-mix(in srgb, var(--article-accent) 2.2%, transparent); }
+.selectable-block.is-selected {
+  outline-color: color-mix(in srgb, var(--article-accent) 72%, transparent);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--article-accent) 3.6%, transparent);
+}
+.selectable-block.is-selected::after {
+  padding: 3px 7px 3px 8px;
+  border-radius: 3px 9px 9px 3px;
+  background: color-mix(in srgb, var(--article-accent) 91%, var(--article-ink));
+  box-shadow: 0 5px 15px color-mix(in srgb, var(--article-accent) 12%, transparent);
+}
+.toast {
+  border-radius: 8px 20px 20px 8px;
+  box-shadow: 0 18px 45px rgba(25, 36, 30, .2);
+}
+
+@media (max-width: 1500px) {
+  .markdown-style-gallery > button { min-height: 84px; }
+  .font-profile-grid > button { min-height: 56px; }
+}
+
+@media (max-width: 840px) {
+  .article-title-block h1 { text-wrap: pretty; }
+  .workflow-item:hover,
+  .markdown-style-gallery > button:hover,
+  .font-profile-grid > button:hover { transform: none; }
+  .source-actions .source-action { min-height: 38px; }
+}
+
+@media (hover: none) {
+  .quick-style-cycle:hover::before,
+  .writing-mode-toggle:hover::before,
+  .source-actions .source-action:hover::before,
+  .primary-action:hover::before,
+  .apply-all:hover::before,
+  .copy-delivery:hover::before { opacity: 0; }
+}
