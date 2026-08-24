@@ -125,7 +125,7 @@ export default function Home() {
   const [markdown, setMarkdown] = useState(sampleMarkdown);
   const [toast, setToast] = useState("");
   const [adopted, setAdopted] = useState<string[]>(["quote"]);
-  const [selected, setSelected] = useState<{ index: number; type: BlockType } | null>({ index: 2, type: "heading" });
+  const [selected, setSelected] = useState<{ index: number; type: BlockType } | null>(null);
   const [capturedType, setCapturedType] = useState<BlockType | null>(null);
   const [syncedTypes, setSyncedTypes] = useState<BlockType[]>([]);
   const [componentQuery, setComponentQuery] = useState("");
@@ -174,12 +174,11 @@ export default function Home() {
       const context = gsap.context(() => {
         const entrance = gsap.timeline({ defaults: { ease: "power3.out" } });
         entrance
-          .from(".topbar", { y: -10, opacity: 0, duration: 0.62 })
-          .from(".left-panel, .inspector-panel", { opacity: 0, duration: 0.48 }, "-=0.34")
-          .from(".paper-frame", { y: 34, scale: 0.975, opacity: 0, duration: 0.86, ease: "power3.out" }, "-=0.28")
-          .from(".article-brandline, .article-title-block > *, .article-body > *", { y: 14, opacity: 0, duration: 0.46, stagger: 0.055 }, "-=0.56")
-          .from(".workflow-item", { x: -10, opacity: 0, duration: 0.34, stagger: 0.045 }, "-=0.72")
-          .from(".inspector-content > *", { x: 10, opacity: 0, duration: 0.36, stagger: 0.05 }, "-=0.55");
+          .from(".topbar", { y: -7, opacity: 0.82, duration: 0.38 })
+          .from(".paper-frame", { y: 22, scaleY: 0.986, transformOrigin: "center top", duration: 0.62, ease: "power3.out" }, "-=0.2")
+          .from(".article-title-block h1", { y: 10, clipPath: "inset(0 0 100% 0)", duration: 0.52, ease: "power3.out" }, "-=0.38")
+          .from(".workflow-item", { x: -7, duration: 0.26, stagger: 0.032 }, "-=0.5")
+          .from(".inspector-content > *", { x: 6, duration: 0.28, stagger: 0.04 }, "-=0.42");
 
         gsap.to(".jiangnan-mist", { xPercent: 1.15, yPercent: -0.35, scale: 1.018, duration: 17, repeat: -1, yoyo: true, ease: "sine.inOut" });
         gsap.fromTo(".studio-waterline", { scaleX: 0.18, opacity: 0.2 }, { scaleX: 1, opacity: 0.7, duration: 5.8, repeat: -1, yoyo: true, ease: "sine.inOut" });
