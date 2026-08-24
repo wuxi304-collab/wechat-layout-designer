@@ -5691,3 +5691,87 @@ body { background: var(--jn-rain-200); color: var(--jn-ink-900); }
   .delivery-shortcuts button { min-height: 62px; }
   .delivery-shortcuts b { font-size: 12px; }
 }
+
+/* V2.9 — Markdown 编码体检与交付防线 */
+.source-health {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.source-health b {
+  flex: 0 0 auto;
+  color: #49554d;
+  font-family: var(--font-number);
+  font-size: 11px;
+  font-weight: 600;
+}
+.source-health i {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 10px 0 22px;
+  overflow: hidden;
+  border: 1px solid rgba(89, 108, 97, .16);
+  border-radius: 5px 14px 14px 5px;
+  background: rgba(255, 255, 255, .34);
+  font-size: 9.5px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-health i::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(105, 136, 120, .08);
+}
+.source-health .encoding-safe { color: #557064; }
+.source-health .encoding-safe::before { background: #71917f; }
+.source-health .encoding-risk {
+  border-color: rgba(167, 82, 62, .23);
+  background: rgba(167, 82, 62, .055);
+  color: #954a3b;
+}
+.source-health .encoding-risk::before {
+  background: #ad5a48;
+  box-shadow: 0 0 0 3px rgba(173, 90, 72, .09);
+}
+.source-health small {
+  flex: 0 0 auto;
+  color: #7c817b;
+  font-size: 9.5px;
+}
+.compatibility-card li {
+  min-height: 38px;
+  line-height: 1.45;
+}
+.article-page .inline-code {
+  display: inline;
+  margin: 0 .16em;
+  padding: .12em .38em .16em;
+  border: 1px solid color-mix(in srgb, var(--article-accent) 14%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--article-accent) 6%, var(--article-paper));
+  color: color-mix(in srgb, var(--article-accent) 80%, var(--article-ink));
+  font-family: var(--font-code);
+  font-size: .86em;
+  font-weight: 560;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .source-drawer { grid-template-rows: 68px 1fr 76px; }
+  .source-drawer footer { gap: 10px; }
+  .source-health { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .source-health i { max-width: 48vw; }
+  .source-health small { display: none; }
+}

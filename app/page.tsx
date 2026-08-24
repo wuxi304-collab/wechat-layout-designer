@@ -183,6 +183,93 @@ const components = [
   { kind: "收束", mark: "结", detail: "形成明确的文章结尾", snippet: "\n\n## 结语\n\n在这里写下结论与下一步。" },
 ];
 
+type DecodedSource = { text: string; encoding: string };
+
+const htmlEntities: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ",
+  hellip: "……", mdash: "—", ndash: "–", middot: "·", bull: "•",
+  ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", laquo: "《", raquo: "》",
+};
+
+function decodeHtmlEntities(value: string) {
+  return value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, body: string) => {
+    if (body[0] !== "#") return htmlEntities[body.toLowerCase()] ?? entity;
+    const codePoint = body[1]?.toLowerCase() === "x" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
+    if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) return entity;
+    return String.fromCodePoint(codePoint);
+  });
+}
+
+function normalizeMarkdownInput(value: string) {
+  return value
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200b\u2060\ufeff]/g, "")
+    .replace(/[\u202a-\u202e\u2066-\u2069\ufff9-\ufffb]/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "")
+    .normalize("NFC");
+}
+
+function hasLoneSurrogate(value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return true;
+  }
+  return false;
+}
+
+function findEncodingIssues(value: string) {
+  const issues: string[] = [];
+  if (value.includes("\uFFFD")) issues.push("编码异常：存在无法识别的替换字符 �");
+  if (hasLoneSurrogate(value)) issues.push("编码异常：存在不完整的 Unicode 字符");
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(value)) issues.push("编码异常：存在不可见控制字符");
+  const mojibakeCount = value.match(/(?:Ã.|Â.|â[€™œ”“]|ä¸|æ–|çš|å®|è¿|é—)/g)?.length ?? 0;
+  if (mojibakeCount >= 3) issues.push("疑似 UTF-8 与 GBK 编码错位，请重新导入原文件");
+  const escapedUnicodeCount = value.match(/\\u(?:\{[\da-f]+\}|[\da-f]{4})/gi)?.length ?? 0;
+  if (escapedUnicodeCount >= 2) issues.push("检测到未解码的 Unicode 转义序列");
+  return issues;
+}
+
+function scoreDecodedText(value: string) {
+  const replacement = value.match(/\uFFFD/g)?.length ?? 0;
+  const controls = value.match(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g)?.length ?? 0;
+  const mojibake = value.match(/(?:Ã.|Â.|â[€™œ”“]|ä¸|æ–|çš|å®|è¿|é—)/g)?.length ?? 0;
+  const cjk = value.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  return Math.min(cjk, 80) - replacement * 500 - controls * 80 - mojibake * 35;
+}
+
+function decodeImportedBuffer(buffer: ArrayBuffer): DecodedSource {
+  const bytes = new Uint8Array(buffer);
+  const decode = (encoding: string, source = bytes, fatal = true) => new TextDecoder(encoding, { fatal }).decode(source);
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return { text: normalizeMarkdownInput(decode("utf-8", bytes.slice(3))), encoding: "UTF-8 · BOM 已清理" };
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return { text: normalizeMarkdownInput(decode("utf-16le", bytes.slice(2))), encoding: "UTF-16 LE" };
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return { text: normalizeMarkdownInput(decode("utf-16be", bytes.slice(2))), encoding: "UTF-16 BE" };
+
+  const evenZeros = bytes.filter((byte, index) => index % 2 === 0 && byte === 0).length;
+  const oddZeros = bytes.filter((byte, index) => index % 2 === 1 && byte === 0).length;
+  if (bytes.length >= 8 && Math.max(evenZeros, oddZeros) / bytes.length > 0.12) {
+    const encoding = oddZeros > evenZeros ? "utf-16le" : "utf-16be";
+    try { return { text: normalizeMarkdownInput(decode(encoding)), encoding: encoding === "utf-16le" ? "UTF-16 LE · 无 BOM" : "UTF-16 BE · 无 BOM" }; }
+    catch { /* 进入中文编码候选 */ }
+  }
+
+  try { return { text: normalizeMarkdownInput(decode("utf-8")), encoding: "UTF-8" }; }
+  catch { /* 继续判断中文旧编码 */ }
+
+  const candidates: DecodedSource[] = [];
+  for (const [codec, label] of [["gb18030", "GB18030 / GBK"], ["big5", "Big5"]] as const) {
+    try { candidates.push({ text: normalizeMarkdownInput(decode(codec)), encoding: label }); }
+    catch { /* 当前编码不匹配 */ }
+  }
+  if (candidates.length) return candidates.sort((left, right) => scoreDecodedText(right.text) - scoreDecodedText(left.text))[0];
+  return { text: normalizeMarkdownInput(decode("utf-8", bytes, false)), encoding: "UTF-8 · 已尽力修复" };
+}
+
 function cleanUrl(rawUrl: string) {
   try {
     const url = new URL(rawUrl.replace(/[>）)。，；;]+$/, ""));
@@ -200,31 +287,41 @@ function urlDomain(rawUrl: string) {
   catch { return "外部资料"; }
 }
 
+function unescapeMarkdown(value: string) {
+  return value.replace(/\\([\\`*_[\]{}()#+\-.!>])/g, "$1");
+}
+
 function plainInline(text: string) {
-  return text
+  return decodeHtmlEntities(text)
+    .replace(/<br\s*\/?>/gi, " ")
     .replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, "〔$2〕")
     .replace(/\[([^\]]+)\]\[(\d+)\]/g, "$1〔$2〕")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1")
     .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(?: |x|X)\]\s*/g, "")
+    .replace(/\\([\\`*_[\]{}()#+\-.!>])/g, "$1")
     .trim();
 }
 
 function renderInline(text: string) {
-  const normalized = text
+  const normalized = decodeHtmlEntities(text)
     .replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, "〔ref:$2〕")
     .replace(/\[([^\]]+)\]\[(\d+)\]/g, "$1〔ref:$2〕");
-  const tokenPattern = /(\*\*[^*]+\*\*|(?<!\*)\*[^*]+\*(?!\*)|~~[^~]+~~|〔ref:\d+〕|\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s，。；！？、）)]+)/g;
+  const tokenPattern = /((?<!\\)\*\*[^*]+\*\*|(?<![\\*])\*[^*]+\*(?!\*)|(?<!\\)~~[^~]+~~|(?<!\\)`[^`\n]+`|<br\s*\/?>|〔ref:\d+〕|\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s，。；！？、）)]+)/gi;
   const parts: React.ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = tokenPattern.exec(normalized))) {
-    if (match.index > cursor) parts.push(normalized.slice(cursor, match.index));
+    if (match.index > cursor) parts.push(unescapeMarkdown(normalized.slice(cursor, match.index)));
     const token = match[0];
     if (token.startsWith("**")) parts.push(<strong key={`${match.index}-strong`}>{token.slice(2, -2).trim()}</strong>);
     else if (token.startsWith("*")) parts.push(<em key={`${match.index}-em`}>{token.slice(1, -1).trim()}</em>);
     else if (token.startsWith("~~")) parts.push(<s key={`${match.index}-strike`}>{token.slice(2, -2)}</s>);
+    else if (token.startsWith("`")) parts.push(<code className="inline-code" key={`${match.index}-code`}>{token.slice(1, -1)}</code>);
+    else if (/^<br/i.test(token)) parts.push(<br key={`${match.index}-break`}/>);
     else if (token.startsWith("〔ref:")) parts.push(<sup className="inline-citation" key={`${match.index}-ref`}>〔{token.slice(5, -1)}〕</sup>);
     else if (token.startsWith("[")) {
       const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
@@ -235,7 +332,7 @@ function renderInline(text: string) {
     }
     cursor = match.index + token.length;
   }
-  if (cursor < normalized.length) parts.push(normalized.slice(cursor));
+  if (cursor < normalized.length) parts.push(unescapeMarkdown(normalized.slice(cursor)));
   return parts.length ? parts : text;
 }
 
@@ -248,56 +345,65 @@ function joinParagraph(lines: string[]) {
 }
 
 function parseArticle(markdown: string) {
-  const lines = markdown.split(/\r?\n/);
+  const source = normalizeMarkdownInput(markdown)
+    .replace(/^([^\n]+)\n={3,}\s*$/gm, "# $1")
+    .replace(/^([^\n]+)\n-{3,}\s*$/gm, "## $1");
+  const lines = source.split("\n");
   let title = "未命名文章";
   let author = "钢铁私塾 唐淼";
   const blocks: ArticleBlock[] = [];
   const references: ArticleReference[] = [];
   let paragraph: string[] = [];
   let list: string[] = [];
-  let codeFence: { language: string; lines: string[] } | null = null;
+  let quote: string[] = [];
+  let codeFence: { marker: "```" | "~~~"; language: string; lines: string[] } | null = null;
   const flushParagraph = () => { if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph) }); paragraph = []; };
   const flushList = () => { if (list.length) blocks.push({ type: "list", items: list }); list = []; };
+  const flushQuote = () => { if (quote.length) blocks.push({ type: "quote", text: joinParagraph(quote) }); quote = []; };
 
   lines.forEach((rawLine) => {
     const line = rawLine.trim();
     if (codeFence) {
-      if (/^```/.test(line)) {
+      if (line.startsWith(codeFence.marker)) {
         blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
         codeFence = null;
       } else codeFence.lines.push(rawLine);
       return;
     }
-    const fence = line.match(/^```\s*([\w+-]*)/);
+    const fence = line.match(/^(```|~~~)\s*([\w+-]*)/);
     if (fence) {
-      flushParagraph(); flushList();
-      codeFence = { language: fence[1] || "text", lines: [] };
+      flushParagraph(); flushList(); flushQuote();
+      codeFence = { marker: fence[1] as "```" | "~~~", language: fence[2] || "text", lines: [] };
       return;
     }
-    if (!line) { flushParagraph(); flushList(); return; }
+    if (!line) { flushParagraph(); flushList(); flushQuote(); return; }
     const authorLine = plainInline(line).match(/^(?:主编|作者)\s*[：:]\s*(.+)$/);
     if (authorLine) {
-      flushParagraph(); flushList();
+      flushParagraph(); flushList(); flushQuote();
       author = authorLine[1].trim();
       return;
     }
     const reference = line.match(/^\[([^\]]+)\]:\s*(https?:\/\/\S+?)(?:\s+["“](.*?)["”])?\s*$/);
     if (reference) {
-      flushParagraph(); flushList();
+      flushParagraph(); flushList(); flushQuote();
       const url = cleanUrl(reference[2]);
       references.push({ id: reference[1], title: plainInline(reference[3] || urlDomain(url)), url, domain: urlDomain(url) });
       return;
     }
-    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flushParagraph(); flushList(); blocks.push({ type: "divider" }); return; }
-    if (line.startsWith("# ")) { title = plainInline(line.slice(2).trim()); return; }
-    if (line.startsWith("## ")) { flushParagraph(); flushList(); blocks.push({ type: "heading", text: plainInline(line.slice(3).replace(/^[一二三四五六七八九十]+、/, "")) }); return; }
-    if (line.startsWith("### ")) { flushParagraph(); flushList(); blocks.push({ type: "subheading", text: plainInline(line.slice(4)) }); return; }
-    if (line.startsWith("> ")) { flushParagraph(); flushList(); blocks.push({ type: "quote", text: line.slice(2) }); return; }
-    if (/^[-*] /.test(line)) { flushParagraph(); list.push(line.slice(2)); return; }
+    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flushParagraph(); flushList(); flushQuote(); blocks.push({ type: "divider" }); return; }
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
+    if (heading?.[1].length === 1) { flushParagraph(); flushList(); flushQuote(); title = plainInline(heading[2]); return; }
+    if (heading?.[1].length === 2) { flushParagraph(); flushList(); flushQuote(); blocks.push({ type: "heading", text: plainInline(heading[2].replace(/^[一二三四五六七八九十]+、/, "")) }); return; }
+    if (heading && heading[1].length >= 3) { flushParagraph(); flushList(); flushQuote(); blocks.push({ type: "subheading", text: plainInline(heading[2]) }); return; }
+    const quoteLine = line.match(/^>\s?(.*)$/);
+    if (quoteLine) { flushParagraph(); flushList(); quote.push(quoteLine[1]); return; }
+    const listLine = line.match(/^(?:[-+*]|\d+[.)]|[（(]?\d+[）)])\s+(.+)$/);
+    if (listLine) { flushParagraph(); flushQuote(); list.push(listLine[1].replace(/^\[(?: |x|X)\]\s+/, "")); return; }
+    flushQuote();
     paragraph.push(line);
   });
   if (codeFence) blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
-  flushParagraph(); flushList();
+  flushParagraph(); flushList(); flushQuote();
   const first = blocks.find((block) => block.type === "paragraph") as { type: "paragraph"; text: string } | undefined;
   const firstText = first ? plainInline(first.text) : "";
   const subtitle = first ? `${firstText.slice(0, 42)}${firstText.length > 42 ? "……" : ""}` : "让内容建立秩序，让观点获得形状。";
@@ -324,6 +430,7 @@ export default function Home() {
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [markdown, setMarkdown] = useState(sampleMarkdown);
+  const [sourceEncoding, setSourceEncoding] = useState("UTF-8 · 编辑器");
   const [toast, setToast] = useState("");
   const [adopted, setAdopted] = useState<string[]>(["quote"]);
   const [selected, setSelected] = useState<{ index: number; type: BlockType } | null>(null);
@@ -344,20 +451,26 @@ export default function Home() {
   const currentTheme = themes[theme];
   const currentMarkdownStyle = markdownStyles[markdownStyle];
   const articleTitleSize = titleBaseSizes[markdownStyle] * titleScale;
-  const wordCount = useMemo(() => markdown.replace(/[#>*`\-]/g, "").trim().length, [markdown]);
-  const article = useMemo(() => parseArticle(markdown), [markdown]);
+  const safeMarkdown = useMemo(() => normalizeMarkdownInput(markdown), [markdown]);
+  const encodingIssues = useMemo(() => findEncodingIssues(markdown), [markdown]);
+  const wordCount = useMemo(() => safeMarkdown.replace(/[#>*`\-]/g, "").trim().length, [safeMarkdown]);
+  const article = useMemo(() => parseArticle(safeMarkdown), [safeMarkdown]);
   const outline = useMemo(() => article.blocks.map((block, index) => block.type === "heading" || block.type === "subheading" ? { index, type: block.type, text: block.text } : null).filter((item): item is { index: number; type: "heading" | "subheading"; text: string } => Boolean(item)), [article.blocks]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
-    const items: string[] = [];
+    const items: string[] = [...encodingIssues];
     if (article.title.length > 64) items.push("标题超过微信 64 字上限");
     if (article.author.length > 8) items.push("作者超过微信 8 字上限");
     if (/\[\^[^\]]+\]/.test(markdown)) items.push("脚注需要转换为文末注释");
-    if (/```mermaid/.test(markdown)) items.push("Mermaid 图需要转为图片");
+    if (/(?:```|~~~)\s*mermaid/i.test(markdown)) items.push("Mermaid 图需要转为图片");
     if (/\[[^\]]*\]\(\s*\)/.test(markdown)) items.push("检测到空链接");
     if (/\|.+\|/.test(markdown)) items.push("表格需要检查手机宽度");
+    for (const marker of ["```", "~~~"] as const) {
+      const fenceCount = markdown.split("\n").filter((line) => line.trimStart().startsWith(marker)).length;
+      if (fenceCount % 2) items.push(`${marker} 代码块没有闭合`);
+    }
     return items;
-  }, [article.author, article.title, markdown]);
+  }, [article.author, article.title, encodingIssues, markdown]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("wechat-layout-designer-draft-v2");
@@ -366,7 +479,8 @@ export default function Home() {
       const payload = JSON.parse(saved);
       if ([2, 3, 4, 5].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
         const timer = window.setTimeout(() => {
-          setMarkdown(payload.markdown);
+          setMarkdown(normalizeMarkdownInput(payload.markdown));
+          setSourceEncoding("UTF-8 · 本机草稿");
           if (payload.schemaVersion >= 3) {
             if (typeof payload.markdownStyle === "string" && payload.markdownStyle in markdownStyles) setMarkdownStyle(payload.markdownStyle as MarkdownStyleKey);
             if (typeof payload.theme === "string" && payload.theme in themes) setTheme(payload.theme as ThemeKey);
@@ -588,16 +702,26 @@ export default function Home() {
   async function importText(file?: File) {
     if (!file) return;
     if (!/\.(md|markdown|txt)$/i.test(file.name)) return notify("当前可直接导入 Markdown 或 TXT");
-    setMarkdown(await file.text());
-    notify(`已导入 ${file.name}，结构分析完成`);
+    try {
+      const decoded = decodeImportedBuffer(await file.arrayBuffer());
+      setMarkdown(decoded.text);
+      setSourceEncoding(`${decoded.encoding} · 文件`);
+      const issues = findEncodingIssues(decoded.text);
+      notify(issues.length ? `已按 ${decoded.encoding} 导入，仍有 ${issues.length} 项编码风险` : `已按 ${decoded.encoding} 导入，字符检查通过`);
+    } catch {
+      notify("文件编码无法识别，请另存为 UTF-8 后重试");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   }
 
   async function pasteMarkdown() {
     try {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) return notify("剪贴板里没有可粘贴的文字");
-      setMarkdown(text);
-      notify("已粘贴 Markdown 原稿");
+      setMarkdown(normalizeMarkdownInput(text));
+      setSourceEncoding("Unicode · 剪贴板");
+      notify("已粘贴原稿，并清理隐藏控制字符");
     } catch {
       notify("浏览器未允许读取剪贴板，请检查权限");
     }
@@ -607,12 +731,14 @@ export default function Home() {
     if (!markdown.trim()) return notify("原稿已经是空的");
     setVersions((items) => [...items.slice(-4), { markdown, label: `清空前恢复点 ${items.length + 1}` }]);
     setMarkdown("");
+    setSourceEncoding("UTF-8 · 空白稿");
     notify("原稿已清空，并保留一个恢复点");
   }
 
   async function copyPlainField(value: string, label: string) {
+    if (findEncodingIssues(value).length) return notify(`${label}含有异常字符，请先回到原稿修正`);
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(normalizeMarkdownInput(value));
       notify(`${label}已复制，可粘贴到微信${label}栏`);
     } catch {
       notify(`浏览器未允许复制${label}，请重试`);
@@ -620,6 +746,10 @@ export default function Home() {
   }
 
   async function copyArticle() {
+    if (encodingIssues.length) {
+      setInspector("智能");
+      return notify(`检测到 ${encodingIssues.length} 项编码风险，处理后才能复制正文`);
+    }
     const source = articleRef.current;
     if (!source) return;
     const clone = source.cloneNode(true) as HTMLElement;
@@ -640,6 +770,7 @@ export default function Home() {
       if (!body) return notify("正文暂时无法导出，请重试");
 
       const exportRoot = document.createElement("section");
+      exportRoot.lang = "zh-CN";
       exportRoot.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.ink};background:#ffffff;box-sizing:border-box;font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;`;
       const byline = document.createElement("p");
       byline.textContent = `主编：${article.author}`;
@@ -656,8 +787,8 @@ export default function Home() {
       exportRoot.querySelectorAll("[data-copy-exclude]").forEach((node) => node.remove());
       exportRoot.querySelectorAll("[data-copy-body],[data-copy-footer]").forEach((node) => { node.removeAttribute("data-copy-body"); node.removeAttribute("data-copy-footer"); });
 
-      const html = exportRoot.outerHTML;
-      const plainText = exportRoot.innerText;
+      const html = normalizeMarkdownInput(exportRoot.outerHTML);
+      const plainText = normalizeMarkdownInput(exportRoot.innerText);
       if (window.ClipboardItem && navigator.clipboard?.write) await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([plainText], { type: "text/plain" }) })]);
       else await navigator.clipboard.writeText(plainText);
       notify("微信正文已复制，不含重复标题与预览页眉");
@@ -793,6 +924,7 @@ export default function Home() {
             <li><i>02</i><p><b>层级克制</b><small>每屏一个视觉重点，颜色不超过三种，列表不超过七项。</small></p></li>
             <li><i>03</i><p><b>图片与链接</b><small>图片进入微信素材体系；外链、热链与跳转发布前复核。</small></p></li>
             <li><i>04</i><p><b>标题与摘要</b><small>准确对应正文，不堆符号，不用无法兑现的悬念。</small></p></li>
+            <li><i>05</i><p><b>编码与字符</b><small>识别 UTF-8、GB18030 与 UTF-16；交付前拦截替换字符、控制符及异常转义。</small></p></li>
           </ul></section>
           <section className="inspector-section"><div className="section-heading"><div><span>钢铁私塾内容要求</span><small>平台红线之上，再加编辑部标准</small></div></div><ul className="content-guardrails">
             <li><Icon name="check" size={14}/><span><b>作者置前</b><small>主编署名位于正文开头。</small></span></li>
@@ -811,7 +943,7 @@ export default function Home() {
         {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.accent }}/>当前主题<button onClick={() => setInspector("样式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.ink }}/>墨黑<button onClick={() => setInspector("样式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => notify("品牌署名编辑将在下一版开放")}>编辑</button></label><label><span>结尾</span><b>固定品牌结尾</b><button onClick={() => notify("品牌结尾编辑将在下一版开放")}>编辑</button></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><div className="brand-consistency"><strong>100%</strong><div><i/><span>颜色、署名与语气均一致</span></div></div></section></div>}
       </aside>
 
-      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()}><Icon name="document" size={14}/>导入文件</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} aria-label="Markdown 原稿" spellCheck={false}/><footer><span>{wordCount} 字 · 自动保存于本机</span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify("内容结构已重新分析"); }}>分析并编排</button></footer></div></div>}
+      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()}><Icon name="document" size={14}/>导入文件</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small>自动保存于本机</small></span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify(encodingIssues.length ? `已完成分析，发现 ${encodingIssues.length} 项编码风险` : "内容结构与编码检查完成"); }}>分析并编排</button></footer></div></div>}
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );
