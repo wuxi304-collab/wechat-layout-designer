@@ -56,6 +56,7 @@ const themes = {
   industrial: { name: "雨苔纪要", accent: "#536b62", ink: "#252b28", paper: "#f4f5f0" },
   eastern: { name: "江南纸墨", accent: "#985043", ink: "#242724", paper: "#fbf6e9" },
   minimal: { name: "烟雨黛", accent: "#586b70", ink: "#272c2d", paper: "#faf9f3" },
+  spring: { name: "草长莺飞", accent: "#71885a", ink: "#283229", paper: "#fcfaed" },
 };
 
 type ThemeKey = keyof typeof themes;
@@ -111,6 +112,16 @@ const markdownStyles = {
     layout: "balanced" as LayoutMode,
     fontSize: 17,
     lineHeight: 1.86,
+  },
+  spring: {
+    name: "草长莺飞",
+    short: "莺飞",
+    description: "春水青 · 柳芽章题 · 杏纸轻读",
+    fit: "人文随笔、品牌故事",
+    theme: "spring" as ThemeKey,
+    layout: "calm" as LayoutMode,
+    fontSize: 17,
+    lineHeight: 2,
   },
 };
 
@@ -732,7 +743,7 @@ export default function Home() {
           <p className="copy-delivery-note">微信标题与作者栏须单独粘贴；正文默认不再重复标题。</p><button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制微信正文</button>
         </div>}
 
-        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">05</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
 
         {inspector === "规范" && <div className="inspector-content standards-panel">
           <section className="inspector-section"><div className="section-heading"><div><span>微信公众号排版规范</span><small>区分平台兼容与品牌建议</small></div><span className="pass-tag">已校验</span></div><ul className="rule-ledger">
