@@ -31,6 +31,7 @@ test("renders production editorial metadata", async () => {
   assert.match(html, /<meta(?=[^>]*property=["']og:title["'])(?=[^>]*content=["']公众号排版设计师["'])[^>]*>/i);
   assert.match(html, /江南书札/);
   assert.match(html, /一键切换版式/);
+  assert.match(html, /按微信深色语义预览/);
   assert.match(html, /data-md-style=["']jiangnan["']/);
   assert.doesNotMatch(html, /codex-preview/i);
 });
