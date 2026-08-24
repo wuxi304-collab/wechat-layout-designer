@@ -118,12 +118,14 @@ type MarkdownStyleKey = keyof typeof markdownStyles;
 const markdownStyleOrder = Object.keys(markdownStyles) as MarkdownStyleKey[];
 type InspectorTab = "智能" | "样式" | "规范" | "品牌";
 type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
-type BlockType = "title" | "paragraph" | "heading" | "quote" | "list" | "divider";
+type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider";
 type ArticleBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; text: string }
+  | { type: "subheading"; text: string }
   | { type: "quote"; text: string }
   | { type: "list"; items: string[] }
+  | { type: "code"; language: string; code: string }
   | { type: "divider" };
 type ArticleReference = { id: string; title: string; url: string; domain: string };
 
@@ -209,17 +211,32 @@ function joinParagraph(lines: string[]) {
 }
 
 function parseArticle(markdown: string) {
-  const lines = markdown.split(/\r?\n/).map((line) => line.trim());
+  const lines = markdown.split(/\r?\n/);
   let title = "未命名文章";
   let author = "钢铁私塾 唐淼";
   const blocks: ArticleBlock[] = [];
   const references: ArticleReference[] = [];
   let paragraph: string[] = [];
   let list: string[] = [];
+  let codeFence: { language: string; lines: string[] } | null = null;
   const flushParagraph = () => { if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph) }); paragraph = []; };
   const flushList = () => { if (list.length) blocks.push({ type: "list", items: list }); list = []; };
 
-  lines.forEach((line) => {
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (codeFence) {
+      if (/^```/.test(line)) {
+        blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
+        codeFence = null;
+      } else codeFence.lines.push(rawLine);
+      return;
+    }
+    const fence = line.match(/^```\s*([\w+-]*)/);
+    if (fence) {
+      flushParagraph(); flushList();
+      codeFence = { language: fence[1] || "text", lines: [] };
+      return;
+    }
     if (!line) { flushParagraph(); flushList(); return; }
     const authorLine = plainInline(line).match(/^(?:主编|作者)\s*[：:]\s*(.+)$/);
     if (authorLine) {
@@ -237,10 +254,12 @@ function parseArticle(markdown: string) {
     if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flushParagraph(); flushList(); blocks.push({ type: "divider" }); return; }
     if (line.startsWith("# ")) { title = plainInline(line.slice(2).trim()); return; }
     if (line.startsWith("## ")) { flushParagraph(); flushList(); blocks.push({ type: "heading", text: plainInline(line.slice(3).replace(/^[一二三四五六七八九十]+、/, "")) }); return; }
+    if (line.startsWith("### ")) { flushParagraph(); flushList(); blocks.push({ type: "subheading", text: plainInline(line.slice(4)) }); return; }
     if (line.startsWith("> ")) { flushParagraph(); flushList(); blocks.push({ type: "quote", text: line.slice(2) }); return; }
     if (/^[-*] /.test(line)) { flushParagraph(); list.push(line.slice(2)); return; }
     paragraph.push(line);
   });
+  if (codeFence) blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
   flushParagraph(); flushList();
   const first = blocks.find((block) => block.type === "paragraph") as { type: "paragraph"; text: string } | undefined;
   const firstText = first ? plainInline(first.text) : "";
@@ -249,7 +268,7 @@ function parseArticle(markdown: string) {
 }
 
 function blockLabel(type: BlockType) {
-  return ({ title: "标题", paragraph: "正文", heading: "章节", quote: "观点", list: "行动列表", divider: "分隔" } as const)[type];
+  return ({ title: "标题", paragraph: "正文", heading: "章节", subheading: "小节", quote: "观点", list: "行动列表", code: "代码块", divider: "分隔" } as const)[type];
 }
 
 export default function Home() {
@@ -262,6 +281,8 @@ export default function Home() {
   const [lineHeight, setLineHeight] = useState(1.96);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("calm");
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [typewriterMode, setTypewriterMode] = useState(false);
   const [markdown, setMarkdown] = useState(sampleMarkdown);
   const [toast, setToast] = useState("");
   const [adopted, setAdopted] = useState<string[]>(["quote"]);
@@ -284,6 +305,7 @@ export default function Home() {
   const currentMarkdownStyle = markdownStyles[markdownStyle];
   const wordCount = useMemo(() => markdown.replace(/[#>*`\-]/g, "").trim().length, [markdown]);
   const article = useMemo(() => parseArticle(markdown), [markdown]);
+  const outline = useMemo(() => article.blocks.map((block, index) => block.type === "heading" || block.type === "subheading" ? { index, type: block.type, text: block.text } : null).filter((item): item is { index: number; type: "heading" | "subheading"; text: string } => Boolean(item)), [article.blocks]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
     const items: string[] = [];
@@ -435,7 +457,27 @@ export default function Home() {
     return () => context.revert();
   }, [selected]);
 
+  useLayoutEffect(() => {
+    if (!studioRef.current || !selected || !focusMode || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = gsap.context(() => {
+      gsap.fromTo(".article-page.focus-active .selectable-block:not(.is-selected)", { opacity: 0.62 }, { opacity: 0.22, duration: 0.38, ease: "power2.out" });
+      gsap.fromTo(".selectable-block.is-selected", { scale: 0.997 }, { scale: 1, duration: 0.42, ease: "power3.out", clearProps: "transform" });
+    }, studioRef);
+    return () => context.revert();
+  }, [focusMode, selected]);
+
+  useEffect(() => {
+    if (!typewriterMode || !selected) return;
+    const frame = window.requestAnimationFrame(() => articleRef.current?.querySelector<HTMLElement>(`[data-block-index="${selected.index}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [selected, typewriterMode]);
+
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(""), 2400); }
+
+  function jumpToBlock(index: number, type: "heading" | "subheading") {
+    setSelected({ index, type });
+    window.requestAnimationFrame(() => articleRef.current?.querySelector<HTMLElement>(`[data-block-index="${index}"]`)?.scrollIntoView({ behavior: "smooth", block: typewriterMode ? "center" : "start" }));
+  }
 
   function adopt(id: string) { setAdopted((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]); }
 
@@ -592,13 +634,14 @@ export default function Home() {
 
   const selectProps = (index: number, type: BlockType) => ({
     className: `selectable-block ${selected?.index === index && selected.type === type ? "is-selected" : ""} ${syncedTypes.includes(type) ? "synced-style" : ""}`,
+    "data-block-index": index,
     role: "button", tabIndex: 0,
     onClick: (event: React.MouseEvent) => { event.stopPropagation(); setSelected({ index, type }); },
     onKeyDown: (event: React.KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") setSelected({ index, type }); },
   });
 
   return (
-    <main ref={studioRef} className="studio-shell" style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
+    <main ref={studioRef} className={`studio-shell ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""}`} style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>江南编辑书房 · 文章有骨</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
@@ -620,7 +663,7 @@ export default function Home() {
         </nav>
 
         <div className="left-context">
-          {stage === "内容" && <><div className="context-head"><span>稿件输入</span><small>保留内容所有权</small></div><button className="context-primary" onClick={() => setSourceOpen(true)}><Icon name="document"/>编辑 Markdown</button><button className="context-row" onClick={() => fileRef.current?.click()}><span><b>导入本地稿件</b><small>支持 .md / .txt</small></span><Icon name="plus"/></button><input ref={fileRef} type="file" accept=".md,.markdown,.txt" hidden onChange={(event) => importText(event.target.files?.[0])}/></>}
+          {stage === "内容" && <><div className="context-head"><span>稿件输入</span><small>保留内容所有权</small></div><button className="context-primary" onClick={() => setSourceOpen(true)}><Icon name="document"/>编辑 Markdown</button><button className="context-row" onClick={() => fileRef.current?.click()}><span><b>导入本地稿件</b><small>支持 .md / .txt</small></span><Icon name="plus"/></button><input ref={fileRef} type="file" accept=".md,.markdown,.txt" hidden onChange={(event) => importText(event.target.files?.[0])}/><div className="article-outline"><header><span>文章大纲</span><small>{outline.length + 1} 个层级</small></header><button className="outline-title" onClick={() => { setSelected({ index: -1, type: "title" }); articleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><i>题</i><span>{article.title}</span></button>{outline.map((item) => <button key={`${item.type}-${item.index}`} className={item.type === "subheading" ? "outline-subheading" : ""} onClick={() => jumpToBlock(item.index, item.type)}><i>{item.type === "heading" ? "章" : "节"}</i><span>{item.text}</span></button>)}</div></>}
           {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
           {stage === "视觉" && <><div className="context-head"><span>Markdown 版式</span><small>一键换骨，不动正文</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
           {stage === "组件" && <><div className="context-head"><span>语义组件</span><small>点击或拖到画布</small></div><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索章节、观点、数据"/></label><div className="component-shelf">{filteredComponents.map((item) => <button key={item.kind} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><b>{item.kind}</b><small>{item.detail}</small></p><Icon name="plus" size={14}/></button>)}</div></>}
@@ -635,6 +678,8 @@ export default function Home() {
           <div><span className="canvas-kicker">纸上工作台</span><strong>{selected ? `正在校订 · ${blockLabel(selected.type)}` : preview === "phone" ? "手机阅读效果" : "桌面阅读效果"}</strong></div>
           <div className="canvas-controls">
             <button className="quick-style-cycle" onClick={cycleMarkdownStyle} aria-label={`一键切换版式，当前为${currentMarkdownStyle.name}`} title="一键切换下一套 Markdown 版式"><Icon name="brush" size={15}/><span>换版</span><b>{currentMarkdownStyle.short}</b></button><span/>
+            <button className={`writing-mode-toggle ${focusMode ? "selected" : ""}`} aria-pressed={focusMode} onClick={() => { setFocusMode((value) => !value); notify(focusMode ? "已退出专注校订" : "已进入专注校订，选择一个段落开始"); }} title="淡化当前内容块之外的文字"><Icon name="spark" size={14}/><b>专注</b></button>
+            <button className={`writing-mode-toggle ${typewriterMode ? "selected" : ""}`} aria-pressed={typewriterMode} onClick={() => { setTypewriterMode((value) => !value); notify(typewriterMode ? "已退出居中阅读" : "已开启居中阅读，所选段落保持在视线中央"); }} title="让所选内容块保持在视线中央"><Icon name="structure" size={14}/><b>居中</b></button><span/>
             <button className={preview === "phone" ? "selected" : ""} aria-pressed={preview === "phone"} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
             <button className={preview === "desktop" ? "selected" : ""} aria-pressed={preview === "desktop"} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
             <button onClick={() => setSourceOpen(true)}>查看原稿</button>
@@ -644,6 +689,7 @@ export default function Home() {
         <div className="jiangnan-mist" aria-hidden="true" />
         <div className="studio-waterline" aria-hidden="true" />
         <div className={`canvas-stage ${preview}`} onClick={() => setSelected(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const snippet = event.dataTransfer.getData("text/plain"); if (snippet) insertComponent(snippet, "语义"); }}>
+          <div className="typewriter-guide" aria-hidden="true" />
           <div className="water-ripples" aria-hidden="true"><i/><i/><i/></div>
           <div className="ink-scent" aria-hidden="true"><span>墨</span><i/><small>松烟入砚</small></div>
           <div className="canvas-atmosphere" aria-hidden="true"><span>烟水入纸</span><i/><small>字句成章</small></div>
@@ -652,14 +698,16 @@ export default function Home() {
 
           <div className="paper-frame">
             <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
-            <article className={`article-page layout-${layoutMode} md-style-${markdownStyle}`} data-md-style={markdownStyle} ref={articleRef}>
+            <article className={`article-page layout-${layoutMode} md-style-${markdownStyle} ${focusMode && selected ? "focus-active" : ""}`} data-md-style={markdownStyle} ref={articleRef}>
             <header className="article-brandline" data-copy-exclude="wechat"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察 · 第 028 期</span></header>
             <section {...selectProps(-1, "title")} data-copy-exclude="wechat"><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：{article.author}</span><i/></div></div></section>
             <div className="article-body" data-copy-body>
               {article.blocks.map((block, index) => {
                 if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === 1 ? "lead-paragraph" : ""}>{renderInline(block.text)}</p></div>;
                 if (block.type === "heading") { const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length; return <div {...selectProps(index, "heading")} key={`${block.type}-${index}`}><section className="chapter-heading"><span>{String(chapter).padStart(2, "0")}</span><div><small>第 {chapter} 章</small><h2>{block.text}</h2></div></section></div>; }
+                if (block.type === "subheading") return <div {...selectProps(index, "subheading")} key={`${block.type}-${index}`}><h3 className="article-subheading"><span>小节</span>{block.text}</h3></div>;
                 if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`${block.type}-${index}`}><blockquote><span>观点</span><p>{renderInline(block.text)}</p></blockquote></div>;
+                if (block.type === "code") return <div {...selectProps(index, "code")} key={`${block.type}-${index}`}><figure className="article-code"><figcaption><span>{block.language}</span><small>CODE NOTE</small></figcaption><pre><code>{block.code}</code></pre></figure></div>;
                 if (block.type === "divider") return <div {...selectProps(index, "divider")} key={`${block.type}-${index}`}><div className="article-divider" aria-hidden="true"><i/><span>章间留白</span><i/></div></div>;
                 return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{renderInline(item)}</b><small>已识别为关键动作，建议保留独立层级。</small></p></li>)}</ol></div>;
               })}
@@ -669,7 +717,7 @@ export default function Home() {
             </article>
           </div>
         </div>
-        <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "微信兼容检查通过"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{versions.length} 个恢复点</span></div>
+        <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "微信兼容检查通过"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
       </section>
 
       <aside className="inspector-panel" ref={inspectorPanelRef}>
