@@ -52,6 +52,7 @@ const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么
 - 把售后责任写进流程`;
 
 const themes = {
+  national: { name: "中国编辑", accent: "#c53238", ink: "#102a46", paper: "#ffffff" },
   editorial: { name: "朱砂社论", accent: "#9d493b", ink: "#232623", paper: "#fbf8ef" },
   industrial: { name: "雨苔纪要", accent: "#536b62", ink: "#252b28", paper: "#f4f5f0" },
   eastern: { name: "江南纸墨", accent: "#985043", ink: "#242724", paper: "#fbf6e9" },
@@ -429,7 +430,7 @@ function blockLabel(type: BlockType) {
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<ThemeKey>("eastern");
+  const [theme, setTheme] = useState<ThemeKey>("national");
   const [markdownStyle, setMarkdownStyle] = useState<MarkdownStyleKey>("jiangnan");
   const [inspector, setInspector] = useState<InspectorTab>("智能");
   const [stage, setStage] = useState<StageKey>("编排");
@@ -491,13 +492,13 @@ export default function Home() {
     if (!saved) return;
     try {
       const payload = JSON.parse(saved);
-      if ([2, 3, 4, 5].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
+      if ([2, 3, 4, 5, 6].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
         const timer = window.setTimeout(() => {
           setMarkdown(normalizeMarkdownInput(payload.markdown));
           setSourceEncoding("UTF-8 · 本机草稿");
           if (payload.schemaVersion >= 3) {
             if (typeof payload.markdownStyle === "string" && payload.markdownStyle in markdownStyles) setMarkdownStyle(payload.markdownStyle as MarkdownStyleKey);
-            if (typeof payload.theme === "string" && payload.theme in themes) setTheme(payload.theme as ThemeKey);
+            if (payload.schemaVersion >= 6 && typeof payload.theme === "string" && payload.theme in themes) setTheme(payload.theme as ThemeKey);
             if (typeof payload.layoutMode === "string" && ["calm", "balanced", "editorial"].includes(payload.layoutMode)) setLayoutMode(payload.layoutMode as LayoutMode);
             if (typeof payload.fontSize === "number") setFontSize(payload.fontSize);
             if (typeof payload.lineHeight === "number") setLineHeight(payload.lineHeight);
@@ -512,7 +513,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 5, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
+    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 6, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
     return () => window.clearTimeout(timer);
   }, [articleTracking, fontProfile, fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme, titleScale]);
 

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     title: "公众号排版设计师",
     description: "不是替文章换颜色，而是替内容建立秩序。",
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "公众号排版设计师 · 江南纸墨工作台" }],
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "公众号排版设计师 · 中国红、深蓝与白色编辑工作台" }],
   },
   twitter: {
     card: "summary_large_image",
