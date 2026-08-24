@@ -57,6 +57,7 @@ const themes = {
   eastern: { name: "江南纸墨", accent: "#985043", ink: "#242724", paper: "#fbf6e9" },
   minimal: { name: "烟雨黛", accent: "#586b70", ink: "#272c2d", paper: "#faf9f3" },
   spring: { name: "草长莺飞", accent: "#71885a", ink: "#283229", paper: "#fcfaed" },
+  collage: { name: "纸上辑录", accent: "#a55443", ink: "#292722", paper: "#f5eddf" },
 };
 
 type ThemeKey = keyof typeof themes;
@@ -148,11 +149,24 @@ const markdownStyles = {
     titleScale: 0.98,
     tracking: 0.022,
   },
+  collage: {
+    name: "纸上辑录",
+    short: "辑录",
+    description: "纸签分章 · 档案引文 · 定格入场",
+    fit: "品牌故事、人物专访",
+    theme: "collage" as ThemeKey,
+    layout: "calm" as LayoutMode,
+    fontProfile: "classic" as FontProfile,
+    fontSize: 17,
+    lineHeight: 1.92,
+    titleScale: 0.98,
+    tracking: 0.018,
+  },
 };
 
 type MarkdownStyleKey = keyof typeof markdownStyles;
-const markdownStyleOrder = Object.keys(markdownStyles) as MarkdownStyleKey[];
-const titleBaseSizes: Record<MarkdownStyleKey, number> = { jiangnan: 33, editorial: 35, technical: 31, essay: 34, minimal: 31, spring: 33 };
+const markdownStyleOrder: MarkdownStyleKey[] = ["collage", "jiangnan", "editorial", "technical", "essay", "minimal", "spring"];
+const titleBaseSizes: Record<MarkdownStyleKey, number> = { jiangnan: 33, editorial: 35, technical: 31, essay: 34, minimal: 31, spring: 33, collage: 33 };
 type InspectorTab = "智能" | "样式" | "规范" | "品牌";
 type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
 type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider";
@@ -599,9 +613,11 @@ export default function Home() {
     previousArticleStyle.current = articleStyle;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
-      gsap.fromTo(".article-page", { scale: 0.993, filter: "blur(1.4px)" }, { scale: 1, filter: "blur(0px)", duration: 0.52, ease: "power2.out", clearProps: "transform,filter" });
-      gsap.fromTo(".article-page h1, .article-page h2, .article-page blockquote", { y: 6, opacity: 0.72 }, { y: 0, opacity: 1, duration: 0.38, stagger: 0.045, ease: "power2.out", clearProps: "transform,opacity" });
-      gsap.fromTo(".article-body > .selectable-block", { y: 5 }, { y: 0, duration: 0.42, stagger: 0.025, ease: "power2.out", clearProps: "transform" });
+      const paperCraft = markdownStyle === "collage";
+      const ease = paperCraft ? "steps(5)" : "power2.out";
+      gsap.fromTo(".article-page", { scale: paperCraft ? 0.986 : 0.993, rotate: paperCraft ? -0.12 : 0, filter: "blur(1.4px)" }, { scale: 1, rotate: 0, filter: "blur(0px)", duration: paperCraft ? 0.46 : 0.52, ease, clearProps: "transform,filter" });
+      gsap.fromTo(".article-page h1, .article-page h2, .article-page blockquote", { y: paperCraft ? 11 : 6, rotate: paperCraft ? -0.4 : 0, opacity: 0.72 }, { y: 0, rotate: 0, opacity: 1, duration: paperCraft ? 0.42 : 0.38, stagger: paperCraft ? 0.07 : 0.045, ease, clearProps: "transform,opacity" });
+      gsap.fromTo(".article-body > .selectable-block", { y: paperCraft ? 8 : 5, x: paperCraft ? -3 : 0 }, { y: 0, x: 0, duration: 0.42, stagger: paperCraft ? 0.045 : 0.025, ease, clearProps: "transform" });
     }, studioRef);
     return () => context.revert();
   }, [fontProfile, layoutMode, markdownStyle, theme]);
@@ -757,7 +773,7 @@ export default function Home() {
     clone.querySelectorAll(".is-selected,.synced-style,.selectable-block").forEach((node) => node.classList.remove("is-selected", "synced-style", "selectable-block"));
     const sourceNodes = [source, ...Array.from(source.querySelectorAll<HTMLElement>("*"))].filter((node) => !node.closest("[data-editor-ui]"));
     const cloneNodes = [clone, ...Array.from(clone.querySelectorAll<HTMLElement>("*"))];
-    const properties = ["display", "margin", "padding", "color", "backgroundColor", "backgroundImage", "border", "borderTop", "borderRight", "borderBottom", "borderLeft", "borderRadius", "boxShadow", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textDecoration", "textIndent", "width", "maxWidth", "boxSizing", "whiteSpace", "wordBreak", "overflowWrap", "verticalAlign"] as const;
+    const properties = ["display", "margin", "padding", "color", "backgroundColor", "backgroundImage", "border", "borderTop", "borderRight", "borderBottom", "borderLeft", "borderRadius", "boxShadow", "filter", "clipPath", "transform", "opacity", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textDecoration", "textIndent", "width", "maxWidth", "boxSizing", "whiteSpace", "wordBreak", "overflowWrap", "verticalAlign"] as const;
     sourceNodes.forEach((node, index) => {
       const target = cloneNodes[index]; if (!target) return;
       const computed = window.getComputedStyle(node);
