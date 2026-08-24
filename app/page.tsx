@@ -174,13 +174,15 @@ export default function Home() {
       const context = gsap.context(() => {
         const entrance = gsap.timeline({ defaults: { ease: "power3.out" } });
         entrance
-          .from(".topbar", { y: -8, opacity: 0.94, duration: 0.46 })
-          .from(".canvas-toolbar", { y: -7, opacity: 0.94, duration: 0.34 }, "-=0.28")
-          .from(".paper-frame", { y: 26, scale: 0.989, duration: 0.72, ease: "power2.out" }, "-=0.16")
-          .from(".workflow-item", { x: -8, opacity: 0.9, duration: 0.28, stagger: 0.04 }, "-=0.54")
-          .from(".inspector-content > *", { y: 8, opacity: 0.92, duration: 0.3, stagger: 0.05 }, "<");
+          .from(".topbar", { y: -10, opacity: 0, duration: 0.62 })
+          .from(".left-panel, .inspector-panel", { opacity: 0, duration: 0.48 }, "-=0.34")
+          .from(".paper-frame", { y: 34, scale: 0.975, opacity: 0, duration: 0.86, ease: "power3.out" }, "-=0.28")
+          .from(".article-brandline, .article-title-block > *, .article-body > *", { y: 14, opacity: 0, duration: 0.46, stagger: 0.055 }, "-=0.56")
+          .from(".workflow-item", { x: -10, opacity: 0, duration: 0.34, stagger: 0.045 }, "-=0.72")
+          .from(".inspector-content > *", { x: 10, opacity: 0, duration: 0.36, stagger: 0.05 }, "-=0.55");
 
         gsap.to(".jiangnan-mist", { xPercent: 1.15, yPercent: -0.35, scale: 1.018, duration: 17, repeat: -1, yoyo: true, ease: "sine.inOut" });
+        gsap.fromTo(".studio-waterline", { scaleX: 0.18, opacity: 0.2 }, { scaleX: 1, opacity: 0.7, duration: 5.8, repeat: -1, yoyo: true, ease: "sine.inOut" });
         gsap.to(".save-indicator i", { scale: 1.55, opacity: 0.38, duration: 1.9, repeat: -1, yoyo: true, ease: "sine.inOut" });
       }, studioRef);
       return () => context.revert();
@@ -206,7 +208,7 @@ export default function Home() {
       const x = (event.clientX - bounds.left) / bounds.width - 0.5;
       const y = (event.clientY - bounds.top) / bounds.height - 0.5;
       mistX(x * 10); mistY(y * 5);
-      paperX(x * -2.4); paperY(y * -1.6);
+      paperX(x * -1.1); paperY(y * -0.7);
     };
     const settle = () => { mistX(0); mistY(0); paperX(0); paperY(0); };
     stageElement.addEventListener("pointermove", move);
@@ -385,6 +387,7 @@ export default function Home() {
         </div>
 
         <div className="jiangnan-mist" aria-hidden="true" />
+        <div className="studio-waterline" aria-hidden="true" />
         <div className={`canvas-stage ${preview}`} onClick={() => setSelected(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const snippet = event.dataTransfer.getData("text/plain"); if (snippet) insertComponent(snippet, "语义"); }}>
           <div className="canvas-atmosphere" aria-hidden="true"><span>烟水入纸</span><i/><small>字句成章</small></div>
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div><div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
