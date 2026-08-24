@@ -134,6 +134,7 @@ const markdownStyles = {
 
 type MarkdownStyleKey = keyof typeof markdownStyles;
 const markdownStyleOrder = Object.keys(markdownStyles) as MarkdownStyleKey[];
+const titleBaseSizes: Record<MarkdownStyleKey, number> = { jiangnan: 32, editorial: 34, technical: 31, essay: 33, minimal: 30, spring: 32 };
 type InspectorTab = "智能" | "样式" | "规范" | "品牌";
 type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
 type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider";
@@ -298,6 +299,8 @@ export default function Home() {
   const [fontSize, setFontSize] = useState(17);
   const [lineHeight, setLineHeight] = useState(1.96);
   const [fontProfile, setFontProfile] = useState<FontProfile>("classic");
+  const [titleScale, setTitleScale] = useState(1);
+  const [articleTracking, setArticleTracking] = useState(0.018);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("calm");
   const [sourceOpen, setSourceOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
@@ -318,10 +321,11 @@ export default function Home() {
   const fileRef = useRef<HTMLInputElement>(null);
   const previousStage = useRef(stage);
   const previousInspector = useRef(inspector);
-  const previousArticleStyle = useRef(`${markdownStyle}-${theme}-${layoutMode}`);
+  const previousArticleStyle = useRef(`${markdownStyle}-${theme}-${layoutMode}-${fontProfile}`);
 
   const currentTheme = themes[theme];
   const currentMarkdownStyle = markdownStyles[markdownStyle];
+  const articleTitleSize = titleBaseSizes[markdownStyle] * titleScale;
   const wordCount = useMemo(() => markdown.replace(/[#>*`\-]/g, "").trim().length, [markdown]);
   const article = useMemo(() => parseArticle(markdown), [markdown]);
   const outline = useMemo(() => article.blocks.map((block, index) => block.type === "heading" || block.type === "subheading" ? { index, type: block.type, text: block.text } : null).filter((item): item is { index: number; type: "heading" | "subheading"; text: string } => Boolean(item)), [article.blocks]);
@@ -342,7 +346,7 @@ export default function Home() {
     if (!saved) return;
     try {
       const payload = JSON.parse(saved);
-      if ([2, 3, 4].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
+      if ([2, 3, 4, 5].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
         const timer = window.setTimeout(() => {
           setMarkdown(payload.markdown);
           if (payload.schemaVersion >= 3) {
@@ -352,6 +356,8 @@ export default function Home() {
             if (typeof payload.fontSize === "number") setFontSize(payload.fontSize);
             if (typeof payload.lineHeight === "number") setLineHeight(payload.lineHeight);
             if (typeof payload.fontProfile === "string" && ["classic", "literary", "clear"].includes(payload.fontProfile)) setFontProfile(payload.fontProfile as FontProfile);
+            if (typeof payload.titleScale === "number") setTitleScale(payload.titleScale);
+            if (typeof payload.articleTracking === "number") setArticleTracking(payload.articleTracking);
           }
         }, 0);
         return () => window.clearTimeout(timer);
@@ -360,9 +366,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 4, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, updatedAt: Date.now() })), 450);
+    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 5, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
     return () => window.clearTimeout(timer);
-  }, [fontProfile, fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme]);
+  }, [articleTracking, fontProfile, fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme, titleScale]);
 
   useEffect(() => {
     if (inspector !== "规范") return;
@@ -456,7 +462,7 @@ export default function Home() {
   }, [inspector]);
 
   useLayoutEffect(() => {
-    const articleStyle = `${markdownStyle}-${theme}-${layoutMode}`;
+    const articleStyle = `${markdownStyle}-${theme}-${layoutMode}-${fontProfile}`;
     if (!studioRef.current || previousArticleStyle.current === articleStyle) return;
     previousArticleStyle.current = articleStyle;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -466,7 +472,7 @@ export default function Home() {
       gsap.fromTo(".article-body > .selectable-block", { y: 5 }, { y: 0, duration: 0.42, stagger: 0.025, ease: "power2.out", clearProps: "transform" });
     }, studioRef);
     return () => context.revert();
-  }, [layoutMode, markdownStyle, theme]);
+  }, [fontProfile, layoutMode, markdownStyle, theme]);
 
   useLayoutEffect(() => {
     if (!studioRef.current || !selected || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -661,7 +667,7 @@ export default function Home() {
   });
 
   return (
-    <main ref={studioRef} className={`studio-shell ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""}`} style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
+    <main ref={studioRef} className={`studio-shell ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""}`} style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>江南编辑书房 · 文章有骨</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
@@ -752,7 +758,7 @@ export default function Home() {
           <p className="copy-delivery-note">微信标题与作者栏须单独粘贴；正文默认不再重复标题。</p><button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制微信正文</button>
         </div>}
 
-        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section font-profile-section"><div className="section-heading"><div><span>字体气质</span><small>不是换字号，是重建阅读性格</small></div></div><div className="font-profile-grid">{fontProfiles.map((item) => <button key={item.key} className={fontProfile === item.key ? "active" : ""} aria-pressed={fontProfile === item.key} onClick={() => { setFontProfile(item.key); notify(`已切换为“${item.name}”字体气质`); }}><span>{item.sample}</span><div><b>{item.name}</b><small>{item.detail}</small></div><i>{fontProfile === item.key ? "正在使用" : "选择"}</i></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section font-profile-section"><div className="section-heading"><div><span>字体气质</span><small>不是换字号，是重建阅读性格</small></div></div><div className="font-profile-grid">{fontProfiles.map((item) => <button key={item.key} className={fontProfile === item.key ? "active" : ""} aria-pressed={fontProfile === item.key} onClick={() => { setFontProfile(item.key); notify(`已切换为“${item.name}”字体气质`); }}><span>{item.sample}</span><div><b>{item.name}</b><small>{item.detail}</small></div><i>{fontProfile === item.key ? "正在使用" : "选择"}</i></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/><label><span><b>标题尺度</b><small>避免标题压住正文</small></span><output>{Math.round(titleScale * 100)}%</output></label><input type="range" min="0.86" max="1.1" step="0.02" value={titleScale} onChange={(event) => setTitleScale(Number(event.target.value))}/><label><span><b>正文字距</b><small>密不逼仄，疏不散漫</small></span><output>{articleTracking.toFixed(3)}</output></label><input type="range" min="0" max="0.04" step="0.002" value={articleTracking} onChange={(event) => setArticleTracking(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
 
         {inspector === "规范" && <div className="inspector-content standards-panel">
           <section className="inspector-section"><div className="section-heading"><div><span>微信公众号排版规范</span><small>区分平台兼容与品牌建议</small></div><span className="pass-tag">已校验</span></div><ul className="rule-ledger">
