@@ -73,68 +73,86 @@ const markdownStyles = {
   jiangnan: {
     name: "江南书札",
     short: "书札",
-    description: "宋体长读 · 朱砂小章 · 水岸留白",
+    description: "疏朗题签 · 文气章节 · 注脚式引文",
     fit: "人物、产业叙事",
     theme: "eastern" as ThemeKey,
     layout: "calm" as LayoutMode,
+    fontProfile: "classic" as FontProfile,
     fontSize: 17,
     lineHeight: 1.96,
+    titleScale: 0.98,
+    tracking: 0.022,
   },
   editorial: {
     name: "编辑部手记",
     short: "手记",
-    description: "强标题 · 观点停顿 · 紧凑章法",
+    description: "强题破局 · 横线分章 · 拉引成势",
     fit: "评论、趋势判断",
     theme: "editorial" as ThemeKey,
     layout: "editorial" as LayoutMode,
+    fontProfile: "classic" as FontProfile,
     fontSize: 18,
     lineHeight: 1.8,
+    titleScale: 1.02,
+    tracking: 0.012,
   },
   technical: {
     name: "技术纪要",
     short: "纪要",
-    description: "理性层级 · 清晰列表 · 数据友好",
+    description: "编号分层 · 参数成组 · 证据优先",
     fit: "标准、材料技术",
     theme: "industrial" as ThemeKey,
     layout: "balanced" as LayoutMode,
+    fontProfile: "clear" as FontProfile,
     fontSize: 16,
     lineHeight: 1.82,
+    titleScale: 0.98,
+    tracking: 0.006,
   },
   essay: {
     name: "观点长卷",
     short: "长卷",
-    description: "大题小节 · 宽松正文 · 引文成景",
+    description: "题跋居中 · 缓章慢读 · 引文成景",
     fit: "深度长文、专栏",
     theme: "editorial" as ThemeKey,
     layout: "calm" as LayoutMode,
+    fontProfile: "literary" as FontProfile,
     fontSize: 17,
     lineHeight: 2,
+    titleScale: 1.02,
+    tracking: 0.024,
   },
   minimal: {
     name: "清简白页",
     short: "清简",
-    description: "低装饰 · 高对比 · 快速阅读",
+    description: "去饰留序 · 短段快读 · 信息直达",
     fit: "快讯、短评、清单",
     theme: "minimal" as ThemeKey,
     layout: "balanced" as LayoutMode,
+    fontProfile: "clear" as FontProfile,
     fontSize: 17,
     lineHeight: 1.86,
+    titleScale: 0.96,
+    tracking: 0.004,
   },
   spring: {
     name: "草长莺飞",
     short: "莺飞",
-    description: "春水青 · 柳芽章题 · 杏纸轻读",
+    description: "柳色题签 · 杏纸轻读 · 春水收章",
     fit: "人文随笔、品牌故事",
     theme: "spring" as ThemeKey,
     layout: "calm" as LayoutMode,
+    fontProfile: "literary" as FontProfile,
     fontSize: 17,
     lineHeight: 2,
+    titleScale: 0.98,
+    tracking: 0.022,
   },
 };
 
 type MarkdownStyleKey = keyof typeof markdownStyles;
 const markdownStyleOrder = Object.keys(markdownStyles) as MarkdownStyleKey[];
-const titleBaseSizes: Record<MarkdownStyleKey, number> = { jiangnan: 32, editorial: 34, technical: 31, essay: 33, minimal: 30, spring: 32 };
+const titleBaseSizes: Record<MarkdownStyleKey, number> = { jiangnan: 33, editorial: 35, technical: 31, essay: 34, minimal: 31, spring: 33 };
 type InspectorTab = "智能" | "样式" | "规范" | "品牌";
 type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
 type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider";
@@ -521,8 +539,11 @@ export default function Home() {
     setMarkdownStyle(key);
     setTheme(style.theme);
     setLayoutMode(style.layout);
+    setFontProfile(style.fontProfile);
     setFontSize(style.fontSize);
     setLineHeight(style.lineHeight);
+    setTitleScale(style.titleScale);
+    setArticleTracking(style.tracking);
     setSelected(null);
     setAdopted(["quote", "list", "rhythm"]);
     notify(`已换为“${style.name}”，正文内容未改动`);
@@ -735,7 +756,7 @@ export default function Home() {
                 if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`${block.type}-${index}`}><blockquote><span>观点</span><p>{renderInline(block.text)}</p></blockquote></div>;
                 if (block.type === "code") return <div {...selectProps(index, "code")} key={`${block.type}-${index}`}><figure className="article-code"><figcaption><span>{block.language}</span><small>CODE NOTE</small></figcaption><pre><code>{block.code}</code></pre></figure></div>;
                 if (block.type === "divider") return <div {...selectProps(index, "divider")} key={`${block.type}-${index}`}><div className="article-divider" aria-hidden="true"><i/><span>章间留白</span><i/></div></div>;
-                return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{renderInline(item)}</b><small>已识别为关键动作，建议保留独立层级。</small></p></li>)}</ol></div>;
+                return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{renderInline(item)}</b></p></li>)}</ol></div>;
               })}
               {article.references.length > 0 && <section className="article-references" aria-label="参考资料"><header><span>参考资料</span><small>SOURCES</small></header><ol>{article.references.map((reference) => <li key={`${reference.id}-${reference.url}`}><span>{reference.id.padStart(2, "0")}</span><a href={reference.url}><b>{reference.title}</b><small>{reference.domain}</small></a></li>)}</ol></section>}
             </div>
