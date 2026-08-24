@@ -52,16 +52,72 @@ const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么
 - 把售后责任写进流程`;
 
 const themes = {
-  editorial: { name: "编辑部", accent: "#9f3d2f", ink: "#1f241f", paper: "#fffdf7" },
-  industrial: { name: "工业纪要", accent: "#35655e", ink: "#1b2926", paper: "#f7f8f2" },
-  eastern: { name: "东方章法", accent: "#866137", ink: "#2a251e", paper: "#fff9eb" },
-  minimal: { name: "克制蓝", accent: "#3c647c", ink: "#202a30", paper: "#fffefa" },
+  editorial: { name: "朱砂社论", accent: "#9d493b", ink: "#232623", paper: "#fbf8ef" },
+  industrial: { name: "雨苔纪要", accent: "#536b62", ink: "#252b28", paper: "#f4f5f0" },
+  eastern: { name: "江南纸墨", accent: "#985043", ink: "#242724", paper: "#fbf6e9" },
+  minimal: { name: "烟雨黛", accent: "#586b70", ink: "#272c2d", paper: "#faf9f3" },
 };
 
 type ThemeKey = keyof typeof themes;
-type InspectorTab = "智能" | "样式" | "品牌";
-type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
 type LayoutMode = "calm" | "balanced" | "editorial";
+
+const markdownStyles = {
+  jiangnan: {
+    name: "江南书札",
+    short: "书札",
+    description: "宋体长读 · 朱砂小章 · 水岸留白",
+    fit: "人物、产业叙事",
+    theme: "eastern" as ThemeKey,
+    layout: "calm" as LayoutMode,
+    fontSize: 17,
+    lineHeight: 1.96,
+  },
+  editorial: {
+    name: "编辑部手记",
+    short: "手记",
+    description: "强标题 · 观点停顿 · 紧凑章法",
+    fit: "评论、趋势判断",
+    theme: "editorial" as ThemeKey,
+    layout: "editorial" as LayoutMode,
+    fontSize: 18,
+    lineHeight: 1.8,
+  },
+  technical: {
+    name: "技术纪要",
+    short: "纪要",
+    description: "理性层级 · 清晰列表 · 数据友好",
+    fit: "标准、材料技术",
+    theme: "industrial" as ThemeKey,
+    layout: "balanced" as LayoutMode,
+    fontSize: 16,
+    lineHeight: 1.82,
+  },
+  essay: {
+    name: "观点长卷",
+    short: "长卷",
+    description: "大题小节 · 宽松正文 · 引文成景",
+    fit: "深度长文、专栏",
+    theme: "editorial" as ThemeKey,
+    layout: "calm" as LayoutMode,
+    fontSize: 17,
+    lineHeight: 2,
+  },
+  minimal: {
+    name: "清简白页",
+    short: "清简",
+    description: "低装饰 · 高对比 · 快速阅读",
+    fit: "快讯、短评、清单",
+    theme: "minimal" as ThemeKey,
+    layout: "balanced" as LayoutMode,
+    fontSize: 17,
+    lineHeight: 1.86,
+  },
+};
+
+type MarkdownStyleKey = keyof typeof markdownStyles;
+const markdownStyleOrder = Object.keys(markdownStyles) as MarkdownStyleKey[];
+type InspectorTab = "智能" | "样式" | "规范" | "品牌";
+type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
 type BlockType = "title" | "paragraph" | "heading" | "quote" | "list";
 type ArticleBlock =
   | { type: "paragraph"; text: string }
@@ -114,13 +170,14 @@ function blockLabel(type: BlockType) {
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<ThemeKey>("editorial");
+  const [theme, setTheme] = useState<ThemeKey>("eastern");
+  const [markdownStyle, setMarkdownStyle] = useState<MarkdownStyleKey>("jiangnan");
   const [inspector, setInspector] = useState<InspectorTab>("智能");
   const [stage, setStage] = useState<StageKey>("编排");
   const [preview, setPreview] = useState<"phone" | "desktop">("phone");
   const [fontSize, setFontSize] = useState(17);
-  const [lineHeight, setLineHeight] = useState(1.88);
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("balanced");
+  const [lineHeight, setLineHeight] = useState(1.96);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("calm");
   const [sourceOpen, setSourceOpen] = useState(false);
   const [markdown, setMarkdown] = useState(sampleMarkdown);
   const [toast, setToast] = useState("");
@@ -130,14 +187,17 @@ export default function Home() {
   const [syncedTypes, setSyncedTypes] = useState<BlockType[]>([]);
   const [componentQuery, setComponentQuery] = useState("");
   const [versions, setVersions] = useState<{ markdown: string; label: string }[]>([]);
+  const [wechatStatus, setWechatStatus] = useState<{ configured: boolean; connected: boolean; mode: string; appId: string | null; message: string }>({ configured: false, connected: false, mode: "未配置", appId: null, message: "尚未检查连接" });
+  const [checkingWechat, setCheckingWechat] = useState(false);
   const studioRef = useRef<HTMLElement>(null);
   const articleRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const previousStage = useRef(stage);
   const previousInspector = useRef(inspector);
-  const previousArticleStyle = useRef(`${theme}-${layoutMode}`);
+  const previousArticleStyle = useRef(`${markdownStyle}-${theme}-${layoutMode}`);
 
   const currentTheme = themes[theme];
+  const currentMarkdownStyle = markdownStyles[markdownStyle];
   const wordCount = useMemo(() => markdown.replace(/[#>*`\-]/g, "").trim().length, [markdown]);
   const article = useMemo(() => parseArticle(markdown), [markdown]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
@@ -155,17 +215,34 @@ export default function Home() {
     if (!saved) return;
     try {
       const payload = JSON.parse(saved);
-      if (payload.schemaVersion === 2 && typeof payload.markdown === "string") {
-        const timer = window.setTimeout(() => setMarkdown(payload.markdown), 0);
+      if ((payload.schemaVersion === 2 || payload.schemaVersion === 3) && typeof payload.markdown === "string") {
+        const timer = window.setTimeout(() => {
+          setMarkdown(payload.markdown);
+          if (payload.schemaVersion === 3) {
+            if (typeof payload.markdownStyle === "string" && payload.markdownStyle in markdownStyles) setMarkdownStyle(payload.markdownStyle as MarkdownStyleKey);
+            if (typeof payload.theme === "string" && payload.theme in themes) setTheme(payload.theme as ThemeKey);
+            if (typeof payload.layoutMode === "string" && ["calm", "balanced", "editorial"].includes(payload.layoutMode)) setLayoutMode(payload.layoutMode as LayoutMode);
+            if (typeof payload.fontSize === "number") setFontSize(payload.fontSize);
+            if (typeof payload.lineHeight === "number") setLineHeight(payload.lineHeight);
+          }
+        }, 0);
         return () => window.clearTimeout(timer);
       }
     } catch { /* 保留示例稿 */ }
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 2, markdown, updatedAt: Date.now() })), 450);
+    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 3, markdown, markdownStyle, theme, layoutMode, fontSize, lineHeight, updatedAt: Date.now() })), 450);
     return () => window.clearTimeout(timer);
-  }, [markdown]);
+  }, [fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme]);
+
+  useEffect(() => {
+    if (inspector !== "规范") return;
+    fetch("/api/wechat")
+      .then((response) => response.json())
+      .then((payload) => setWechatStatus(payload))
+      .catch(() => setWechatStatus((current) => ({ ...current, message: "连接状态暂不可用" })));
+  }, [inspector]);
 
   useLayoutEffect(() => {
     if (!studioRef.current) return;
@@ -181,7 +258,9 @@ export default function Home() {
           .from(".inspector-content > *", { x: 6, duration: 0.28, stagger: 0.04 }, "-=0.42");
 
         gsap.to(".jiangnan-mist", { xPercent: 1.15, yPercent: -0.35, scale: 1.018, duration: 17, repeat: -1, yoyo: true, ease: "sine.inOut" });
-        gsap.fromTo(".studio-waterline", { scaleX: 0.18, opacity: 0.2 }, { scaleX: 1, opacity: 0.7, duration: 5.8, repeat: -1, yoyo: true, ease: "sine.inOut" });
+        gsap.fromTo(".studio-waterline", { scaleX: 0.18, opacity: 0.18 }, { scaleX: 1, opacity: 0.62, duration: 6.8, repeat: -1, yoyo: true, ease: "sine.inOut" });
+        gsap.fromTo(".water-ripples i", { scaleX: 0.2, opacity: 0, transformOrigin: "center" }, { scaleX: 1, opacity: 0.34, duration: 4.8, stagger: 1.15, repeat: -1, repeatDelay: 0.7, ease: "sine.inOut" });
+        gsap.fromTo(".ink-scent", { y: 2, opacity: 0.5 }, { y: -3, opacity: 0.78, duration: 5.4, repeat: -1, yoyo: true, ease: "sine.inOut" });
         gsap.to(".save-indicator i", { scale: 1.55, opacity: 0.38, duration: 1.9, repeat: -1, yoyo: true, ease: "sine.inOut" });
       }, studioRef);
       return () => context.revert();
@@ -224,8 +303,8 @@ export default function Home() {
     previousStage.current = stage;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
-      gsap.fromTo(".left-context > *", { y: 9, opacity: 0.78 }, { y: 0, opacity: 1, duration: 0.38, stagger: 0.045, ease: "power2.out", clearProps: "transform,opacity" });
-      gsap.fromTo(".workflow-item.active .workflow-icon", { scale: 0.86, rotate: -5 }, { scale: 1, rotate: 0, duration: 0.42, ease: "back.out(1.7)", clearProps: "transform" });
+      gsap.fromTo(".left-context > *", { y: 8, opacity: 0.72, filter: "blur(2px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.46, stagger: 0.055, ease: "power2.out", clearProps: "transform,opacity,filter" });
+      gsap.fromTo(".workflow-item.active .workflow-icon", { scale: 0.91, rotate: -2 }, { scale: 1, rotate: 0, duration: 0.48, ease: "power3.out", clearProps: "transform" });
     }, studioRef);
     return () => context.revert();
   }, [stage]);
@@ -235,27 +314,32 @@ export default function Home() {
     previousInspector.current = inspector;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
-      gsap.fromTo(".inspector-content > *", { y: 12, opacity: 0.78 }, { y: 0, opacity: 1, duration: 0.4, stagger: 0.055, ease: "power2.out", clearProps: "transform,opacity" });
+      const transition = gsap.timeline({ defaults: { ease: "power2.out" } });
+      transition
+        .fromTo(".inspector-tabs button.active i", { scaleX: 0.18, opacity: 0, transformOrigin: "center center" }, { scaleX: 1, opacity: 1, duration: 0.46, ease: "sine.out", clearProps: "transform,opacity" })
+        .fromTo(".inspector-content > *", { x: 7, y: 3, opacity: 0.55, scale: 0.994, filter: "blur(2px)" }, { x: 0, y: 0, opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.5, stagger: 0.065, clearProps: "transform,opacity,filter" }, "-=0.3")
+        .fromTo(".inspector-content li", { y: 4, opacity: 0.72 }, { y: 0, opacity: 1, duration: 0.34, stagger: 0.03, ease: "sine.out", clearProps: "transform,opacity" }, "-=0.42");
     }, studioRef);
     return () => context.revert();
   }, [inspector]);
 
   useLayoutEffect(() => {
-    const articleStyle = `${theme}-${layoutMode}`;
+    const articleStyle = `${markdownStyle}-${theme}-${layoutMode}`;
     if (!studioRef.current || previousArticleStyle.current === articleStyle) return;
     previousArticleStyle.current = articleStyle;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
       gsap.fromTo(".article-page", { scale: 0.993, filter: "blur(1.4px)" }, { scale: 1, filter: "blur(0px)", duration: 0.52, ease: "power2.out", clearProps: "transform,filter" });
       gsap.fromTo(".article-page h1, .article-page h2, .article-page blockquote", { y: 6, opacity: 0.72 }, { y: 0, opacity: 1, duration: 0.38, stagger: 0.045, ease: "power2.out", clearProps: "transform,opacity" });
+      gsap.fromTo(".article-body > .selectable-block", { y: 5 }, { y: 0, duration: 0.42, stagger: 0.025, ease: "power2.out", clearProps: "transform" });
     }, studioRef);
     return () => context.revert();
-  }, [theme, layoutMode]);
+  }, [layoutMode, markdownStyle, theme]);
 
   useLayoutEffect(() => {
     if (!studioRef.current || !selected || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
-      gsap.fromTo(".block-toolbar", { y: -7, scale: 0.965, opacity: 0.72 }, { y: 0, scale: 1, opacity: 1, duration: 0.3, ease: "back.out(1.55)", clearProps: "transform,opacity" });
+      gsap.fromTo(".block-toolbar", { y: -6, scale: 0.975, opacity: 0.55, filter: "blur(2px)" }, { y: 0, scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.42, ease: "power3.out", clearProps: "transform,opacity,filter" });
       gsap.fromTo(".selectable-block.is-selected", { backgroundColor: "rgba(159, 61, 47, 0.12)" }, { backgroundColor: "rgba(159, 61, 47, 0.035)", duration: 0.58, ease: "power2.out", clearProps: "backgroundColor" });
     }, studioRef);
     return () => context.revert();
@@ -272,6 +356,23 @@ export default function Home() {
     if (mode === "editorial") { setFontSize(18); setLineHeight(1.78); }
     setAdopted(["quote", "list", "rhythm"]);
     notify(`已按“${mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}”策略重排全文`);
+  }
+
+  function applyMarkdownStyle(key: MarkdownStyleKey) {
+    const style = markdownStyles[key];
+    setMarkdownStyle(key);
+    setTheme(style.theme);
+    setLayoutMode(style.layout);
+    setFontSize(style.fontSize);
+    setLineHeight(style.lineHeight);
+    setSelected(null);
+    setAdopted(["quote", "list", "rhythm"]);
+    notify(`已换为“${style.name}”，正文内容未改动`);
+  }
+
+  function cycleMarkdownStyle() {
+    const currentIndex = markdownStyleOrder.indexOf(markdownStyle);
+    applyMarkdownStyle(markdownStyleOrder[(currentIndex + 1) % markdownStyleOrder.length]);
   }
 
   function insertComponent(snippet: string, kind: string) {
@@ -312,6 +413,24 @@ export default function Home() {
     notify(`已导入 ${file.name}，结构分析完成`);
   }
 
+  async function pasteMarkdown() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) return notify("剪贴板里没有可粘贴的文字");
+      setMarkdown(text);
+      notify("已粘贴 Markdown 原稿");
+    } catch {
+      notify("浏览器未允许读取剪贴板，请检查权限");
+    }
+  }
+
+  function clearMarkdown() {
+    if (!markdown.trim()) return notify("原稿已经是空的");
+    setVersions((items) => [...items.slice(-4), { markdown, label: `清空前恢复点 ${items.length + 1}` }]);
+    setMarkdown("");
+    notify("原稿已清空，并保留一个恢复点");
+  }
+
   async function copyArticle() {
     const source = articleRef.current;
     if (!source) return;
@@ -320,12 +439,12 @@ export default function Home() {
     clone.querySelectorAll(".is-selected,.synced-style,.selectable-block").forEach((node) => node.classList.remove("is-selected", "synced-style", "selectable-block"));
     const sourceNodes = [source, ...Array.from(source.querySelectorAll<HTMLElement>("*"))].filter((node) => !node.closest("[data-editor-ui]"));
     const cloneNodes = [clone, ...Array.from(clone.querySelectorAll<HTMLElement>("*"))];
-    const properties = ["display", "margin", "padding", "color", "backgroundColor", "border", "borderTop", "borderRight", "borderBottom", "borderLeft", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textDecoration", "width", "maxWidth", "boxSizing", "whiteSpace", "wordBreak", "verticalAlign"] as const;
+    const properties = ["display", "margin", "padding", "color", "backgroundColor", "backgroundImage", "border", "borderTop", "borderRight", "borderBottom", "borderLeft", "borderRadius", "boxShadow", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textDecoration", "textIndent", "width", "maxWidth", "boxSizing", "whiteSpace", "wordBreak", "overflowWrap", "verticalAlign"] as const;
     sourceNodes.forEach((node, index) => {
       const target = cloneNodes[index]; if (!target) return;
       const computed = window.getComputedStyle(node);
       properties.forEach((property) => target.style.setProperty(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`), computed[property]));
-      target.removeAttribute("class"); target.removeAttribute("id"); target.removeAttribute("tabindex"); target.removeAttribute("role");
+      target.removeAttribute("class"); target.removeAttribute("id"); target.removeAttribute("tabindex"); target.removeAttribute("role"); target.removeAttribute("data-md-style");
     });
     try {
       const html = clone.outerHTML;
@@ -333,6 +452,21 @@ export default function Home() {
       else await navigator.clipboard.writeText(source.innerText);
       notify("已复制公众号兼容富文本");
     } catch { notify("浏览器未允许复制，请重试"); }
+  }
+
+  async function checkWechatConnection() {
+    setCheckingWechat(true);
+    try {
+      const response = await fetch("/api/wechat?probe=1", { cache: "no-store" });
+      const payload = await response.json();
+      setWechatStatus(payload);
+      notify(payload.connected ? "公众号后端连接正常" : payload.message);
+    } catch {
+      setWechatStatus((current) => ({ ...current, connected: false, message: "无法连接服务端模块" }));
+      notify("无法连接服务端模块");
+    } finally {
+      setCheckingWechat(false);
+    }
   }
 
   const selectProps = (index: number, type: BlockType) => ({
@@ -345,7 +479,7 @@ export default function Home() {
   return (
     <main ref={studioRef} className="studio-shell" style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
       <header className="topbar">
-        <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>文章有骨，版式有气</small></div></div>
+        <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>江南编辑书房 · 文章有骨</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
         <div className="top-actions">
           <button className="icon-button" aria-label="恢复上一版本" onClick={restoreVersion}><Icon name="undo"/></button>
@@ -366,8 +500,8 @@ export default function Home() {
 
         <div className="left-context">
           {stage === "内容" && <><div className="context-head"><span>稿件输入</span><small>保留内容所有权</small></div><button className="context-primary" onClick={() => setSourceOpen(true)}><Icon name="document"/>编辑 Markdown</button><button className="context-row" onClick={() => fileRef.current?.click()}><span><b>导入本地稿件</b><small>支持 .md / .txt</small></span><Icon name="plus"/></button><input ref={fileRef} type="file" accept=".md,.markdown,.txt" hidden onChange={(event) => importText(event.target.files?.[0])}/></>}
-          {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} onClick={() => applyLayout(mode)}><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
-          {stage === "视觉" && <><div className="context-head"><span>视觉气质</span><small>来自品牌令牌</small></div><div className="mini-themes">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} onClick={() => setTheme(key)}><i style={{ background: item.accent }}/><span>{item.name}</span></button>)}</div></>}
+          {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
+          {stage === "视觉" && <><div className="context-head"><span>Markdown 版式</span><small>一键换骨，不动正文</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
           {stage === "组件" && <><div className="context-head"><span>语义组件</span><small>点击或拖到画布</small></div><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索章节、观点、数据"/></label><div className="component-shelf">{filteredComponents.map((item) => <button key={item.kind} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><b>{item.kind}</b><small>{item.detail}</small></p><Icon name="plus" size={14}/></button>)}</div></>}
           {stage === "交付" && <><div className="context-head"><span>交付清单</span><small>复制前必须通过</small></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul><button className="context-primary" onClick={copyArticle}><Icon name="copy"/>复制公众号排版</button></>}
         </div>
@@ -379,8 +513,9 @@ export default function Home() {
         <div className="canvas-toolbar">
           <div><span className="canvas-kicker">纸上工作台</span><strong>{selected ? `正在校订 · ${blockLabel(selected.type)}` : preview === "phone" ? "手机阅读效果" : "桌面阅读效果"}</strong></div>
           <div className="canvas-controls">
-            <button className={preview === "phone" ? "selected" : ""} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
-            <button className={preview === "desktop" ? "selected" : ""} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
+            <button className="quick-style-cycle" onClick={cycleMarkdownStyle} aria-label={`一键切换版式，当前为${currentMarkdownStyle.name}`} title="一键切换下一套 Markdown 版式"><Icon name="brush" size={15}/><span>换版</span><b>{currentMarkdownStyle.short}</b></button><span/>
+            <button className={preview === "phone" ? "selected" : ""} aria-pressed={preview === "phone"} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
+            <button className={preview === "desktop" ? "selected" : ""} aria-pressed={preview === "desktop"} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
             <button onClick={() => setSourceOpen(true)}>查看原稿</button>
           </div>
         </div>
@@ -388,14 +523,16 @@ export default function Home() {
         <div className="jiangnan-mist" aria-hidden="true" />
         <div className="studio-waterline" aria-hidden="true" />
         <div className={`canvas-stage ${preview}`} onClick={() => setSelected(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const snippet = event.dataTransfer.getData("text/plain"); if (snippet) insertComponent(snippet, "语义"); }}>
+          <div className="water-ripples" aria-hidden="true"><i/><i/><i/></div>
+          <div className="ink-scent" aria-hidden="true"><span>墨</span><i/><small>松烟入砚</small></div>
           <div className="canvas-atmosphere" aria-hidden="true"><span>烟水入纸</span><i/><small>字句成章</small></div>
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div><div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
           <div className="paper-frame">
             <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
-            <article className={`article-page layout-${layoutMode}`} ref={articleRef}>
-            <header className="article-brandline"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category">产业观察 · 第 028 期</span></header>
+            <article className={`article-page layout-${layoutMode} md-style-${markdownStyle}`} data-md-style={markdownStyle} ref={articleRef}>
+            <header className="article-brandline"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察 · 第 028 期</span></header>
             <section {...selectProps(-1, "title")}><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：钢铁私塾 唐淼</span><i/></div></div></section>
             <div className="article-body">
               {article.blocks.map((block, index) => {
@@ -413,23 +550,44 @@ export default function Home() {
       </section>
 
       <aside className="inspector-panel">
-        <div className="inspector-tabs" role="tablist">{(["智能", "样式", "品牌"] as InspectorTab[]).map((tab) => <button key={tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}>{tab}</button>)}</div>
+        <div className="inspector-tabs" role="tablist">{(["智能", "样式", "规范", "品牌"] as InspectorTab[]).map((tab, index) => <button key={tab} role="tab" aria-selected={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><em>0{index + 1}</em><span>{tab}</span><i/></button>)}</div>
         {inspector === "智能" && <div className="inspector-content">
           <section className="design-score"><div className="score-ring"><strong>{diagnostics.length ? 86 : 94}</strong><small>设计分</small></div><div><span>节奏清楚，论点获得停顿</span><p>所有建议都可执行、撤回并留下恢复点。</p></div></section>
-          <section className="inspector-section layout-director"><div className="section-heading"><div><span>整稿导演</span><small>一次决定全文密度与节奏</small></div><Icon name="spark" size={17}/></div><div className="strategy-switch">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} onClick={() => applyLayout(mode)}>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</button>)}</div><button className="apply-all" onClick={() => applyLayout(layoutMode)}>执行全文重排<span>不改一个字</span></button></section>
+          <section className="inspector-section layout-director"><div className="section-heading"><div><span>整稿导演</span><small>一次决定全文密度与节奏</small></div><Icon name="spark" size={17}/></div><div className="strategy-switch">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}<i/></button>)}</div><button className="apply-all" onClick={() => applyLayout(layoutMode)}>执行全文重排<span>不改一个字</span></button></section>
           <section className="inspector-section"><div className="section-heading"><div><span>结构建议</span><small>来自文章语义，而非模板匹配</small></div><span className="suggestion-count">3</span></div><div className="suggestion-list">{[
             ["quote", "观点形成阅读停顿", "1 处判断已识别为观点组件。"], ["list", "并列信息改为行动序列", "末段 4 个动作适合编号表达。"], ["rhythm", "首屏保留一个主命题", "标题与摘要的间距需要更克制。"],
-          ].map(([id, title, text], index) => { const applied = adopted.includes(id); return <article className={`suggestion-card ${applied ? "applied" : ""}`} key={id}><div className="suggestion-number">0{index + 1}</div><div><strong>{title}</strong><p>{text}</p></div><button onClick={() => adopt(id)}>{applied ? "已采用" : "采用"}</button></article>; })}</div></section>
+          ].map(([id, title, text], index) => { const applied = adopted.includes(id); return <article className={`suggestion-card ${applied ? "applied" : ""}`} key={id}><div className="suggestion-number">0{index + 1}</div><div><strong>{title}</strong><p>{text}</p></div><button className="proof-action" aria-pressed={applied} onClick={() => adopt(id)}><i/>{applied ? "已采用" : "采用"}</button></article>; })}</div></section>
           <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>交付健康度</span><small>公众号粘贴前的确定性</small></div><span className={diagnostics.length ? "warning-tag" : "pass-tag"}>{diagnostics.length ? "待处理" : "通过"}</span></div>{diagnostics.length ? <ul>{diagnostics.map((item) => <li key={item}><Icon name="warning" size={15}/>{item}<span>定位</span></li>)}</ul> : <ul><li><Icon name="check" size={15}/>层级与段落<span>正常</span></li><li><Icon name="check" size={15}/>图片与链接<span>正常</span></li><li><Icon name="check" size={15}/>微信样式兼容<span>正常</span></li></ul>}</section>
           <button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制公众号排版</button>
         </div>}
 
-        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section"><div className="section-heading"><div><span>文章气质</span><small>原创令牌系统，改变章法而非贴皮</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">05</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+
+        {inspector === "规范" && <div className="inspector-content standards-panel">
+          <section className="inspector-section"><div className="section-heading"><div><span>微信公众号排版规范</span><small>区分平台兼容与品牌建议</small></div><span className="pass-tag">已校验</span></div><ul className="rule-ledger">
+            <li><i>01</i><p><b>正文基线</b><small>16—18px，行距 1.75—1.9；避免依赖外部 CSS。</small></p></li>
+            <li><i>02</i><p><b>层级克制</b><small>每屏一个视觉重点，颜色不超过三种，列表不超过七项。</small></p></li>
+            <li><i>03</i><p><b>图片与链接</b><small>图片进入微信素材体系；外链、热链与跳转发布前复核。</small></p></li>
+            <li><i>04</i><p><b>标题与摘要</b><small>准确对应正文，不堆符号，不用无法兑现的悬念。</small></p></li>
+          </ul></section>
+          <section className="inspector-section"><div className="section-heading"><div><span>钢铁私塾内容要求</span><small>平台红线之上，再加编辑部标准</small></div></div><ul className="content-guardrails">
+            <li><Icon name="check" size={14}/><span><b>作者置前</b><small>主编署名位于正文开头。</small></span></li>
+            <li><Icon name="check" size={14}/><span><b>1500—2500 字</b><small>当前 {wordCount} 字，短稿允许人工放行。</small></span></li>
+            <li><Icon name="check" size={14}/><span><b>事实可追溯</b><small>数据、标准、引语与图片来源可以复核。</small></span></li>
+            <li><Icon name="warning" size={14}/><span><b>内容合规</b><small>杜绝虚假、侵权、低俗、诱导分享及夸大宣传；时政新闻注意资质边界。</small></span></li>
+          </ul></section>
+          <section className="inspector-section wechat-connection"><div className="section-heading"><div><span>公众号后端连接</span><small>AppSecret 永不进入浏览器</small></div><span className={wechatStatus.connected ? "pass-tag" : "warning-tag"}>{wechatStatus.connected ? "已连接" : "待配置"}</span></div>
+            <div className="connection-state"><span className={wechatStatus.connected ? "online" : ""}/><div><b>{wechatStatus.mode}</b><small>{wechatStatus.message}</small></div></div>
+            <dl><div><dt>AppID</dt><dd>{wechatStatus.appId ?? "未配置"}</dd></div><div><dt>AppSecret</dt><dd>{wechatStatus.configured ? "•••••••••••• · 服务端" : "未配置"}</dd></div></dl>
+            <button className="connection-test" onClick={checkWechatConnection} disabled={checkingWechat}>{checkingWechat ? "正在检测…" : "检测公众号连接"}</button>
+            <p className="security-note">生产环境优先使用固定出口 IP 的安全桥接服务；当前站点也支持直连模式，但仍须满足微信公众平台的接口权限与 IP 白名单要求。</p>
+          </section>
+        </div>}
 
         {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.accent }}/>当前主题<button onClick={() => setInspector("样式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.ink }}/>墨黑<button onClick={() => setInspector("样式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => notify("品牌署名编辑将在下一版开放")}>编辑</button></label><label><span>结尾</span><b>固定品牌结尾</b><button onClick={() => notify("品牌结尾编辑将在下一版开放")}>编辑</button></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><div className="brand-consistency"><strong>100%</strong><div><i/><span>颜色、署名与语气均一致</span></div></div></section></div>}
       </aside>
 
-      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div><button className="import-file" onClick={() => fileRef.current?.click()}>导入文件</button><button onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} aria-label="Markdown 原稿" spellCheck={false}/><footer><span>{wordCount} 字 · 自动保存于本机</span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify("内容结构已重新分析"); }}>分析并编排</button></footer></div></div>}
+      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()}><Icon name="document" size={14}/>导入文件</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} aria-label="Markdown 原稿" spellCheck={false}/><footer><span>{wordCount} 字 · 自动保存于本机</span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify("内容结构已重新分析"); }}>分析并编排</button></footer></div></div>}
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );
