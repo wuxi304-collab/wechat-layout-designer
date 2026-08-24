@@ -211,6 +211,7 @@ function joinParagraph(lines: string[]) {
 function parseArticle(markdown: string) {
   const lines = markdown.split(/\r?\n/).map((line) => line.trim());
   let title = "未命名文章";
+  let author = "钢铁私塾 唐淼";
   const blocks: ArticleBlock[] = [];
   const references: ArticleReference[] = [];
   let paragraph: string[] = [];
@@ -220,6 +221,12 @@ function parseArticle(markdown: string) {
 
   lines.forEach((line) => {
     if (!line) { flushParagraph(); flushList(); return; }
+    const authorLine = plainInline(line).match(/^(?:主编|作者)\s*[：:]\s*(.+)$/);
+    if (authorLine) {
+      flushParagraph(); flushList();
+      author = authorLine[1].trim();
+      return;
+    }
     const reference = line.match(/^\[([^\]]+)\]:\s*(https?:\/\/\S+?)(?:\s+["“](.*?)["”])?\s*$/);
     if (reference) {
       flushParagraph(); flushList();
@@ -238,7 +245,7 @@ function parseArticle(markdown: string) {
   const first = blocks.find((block) => block.type === "paragraph") as { type: "paragraph"; text: string } | undefined;
   const firstText = first ? plainInline(first.text) : "";
   const subtitle = first ? `${firstText.slice(0, 42)}${firstText.length > 42 ? "……" : ""}` : "让内容建立秩序，让观点获得形状。";
-  return { title, subtitle, blocks, references };
+  return { title, author, subtitle, blocks, references };
 }
 
 function blockLabel(type: BlockType) {
@@ -280,12 +287,14 @@ export default function Home() {
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
     const items: string[] = [];
+    if (article.title.length > 64) items.push("标题超过微信 64 字上限");
+    if (article.author.length > 8) items.push("作者超过微信 8 字上限");
     if (/\[\^[^\]]+\]/.test(markdown)) items.push("脚注需要转换为文末注释");
     if (/```mermaid/.test(markdown)) items.push("Mermaid 图需要转为图片");
     if (/\[[^\]]*\]\(\s*\)/.test(markdown)) items.push("检测到空链接");
     if (/\|.+\|/.test(markdown)) items.push("表格需要检查手机宽度");
     return items;
-  }, [markdown]);
+  }, [article.author, article.title, markdown]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("wechat-layout-designer-draft-v2");
@@ -512,6 +521,15 @@ export default function Home() {
     notify("原稿已清空，并保留一个恢复点");
   }
 
+  async function copyPlainField(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      notify(`${label}已复制，可粘贴到微信${label}栏`);
+    } catch {
+      notify(`浏览器未允许复制${label}，请重试`);
+    }
+  }
+
   async function copyArticle() {
     const source = articleRef.current;
     if (!source) return;
@@ -528,10 +546,32 @@ export default function Home() {
       target.removeAttribute("class"); target.removeAttribute("id"); target.removeAttribute("tabindex"); target.removeAttribute("role"); target.removeAttribute("data-md-style");
     });
     try {
-      const html = clone.outerHTML;
-      if (window.ClipboardItem && navigator.clipboard?.write) await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([source.innerText], { type: "text/plain" }) })]);
-      else await navigator.clipboard.writeText(source.innerText);
-      notify("已复制公众号兼容富文本");
+      const body = clone.querySelector<HTMLElement>("[data-copy-body]");
+      const footer = clone.querySelector<HTMLElement>("[data-copy-footer]");
+      if (!body) return notify("正文暂时无法导出，请重试");
+
+      const exportRoot = document.createElement("section");
+      exportRoot.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.ink};background:#ffffff;box-sizing:border-box;font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;`;
+      const byline = document.createElement("p");
+      byline.textContent = `主编：${article.author}`;
+      byline.style.cssText = `margin:0 0 30px;padding:0 0 14px;border:0;border-bottom:1px solid ${currentTheme.accent}33;color:${currentTheme.accent};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13px;font-weight:600;line-height:1.7;letter-spacing:.03em;text-align:left;`;
+      exportRoot.appendChild(byline);
+
+      body.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.ink};background:#ffffff;box-sizing:border-box;font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;font-size:${fontSize}px;line-height:${lineHeight};`;
+      body.removeAttribute("data-copy-body");
+      exportRoot.appendChild(body);
+      if (footer) {
+        footer.removeAttribute("data-copy-footer");
+        exportRoot.appendChild(footer);
+      }
+      exportRoot.querySelectorAll("[data-copy-exclude]").forEach((node) => node.remove());
+      exportRoot.querySelectorAll("[data-copy-body],[data-copy-footer]").forEach((node) => { node.removeAttribute("data-copy-body"); node.removeAttribute("data-copy-footer"); });
+
+      const html = exportRoot.outerHTML;
+      const plainText = exportRoot.innerText;
+      if (window.ClipboardItem && navigator.clipboard?.write) await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([plainText], { type: "text/plain" }) })]);
+      else await navigator.clipboard.writeText(plainText);
+      notify("微信正文已复制，不含重复标题与预览页眉");
     } catch { notify("浏览器未允许复制，请重试"); }
   }
 
@@ -584,7 +624,7 @@ export default function Home() {
           {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
           {stage === "视觉" && <><div className="context-head"><span>Markdown 版式</span><small>一键换骨，不动正文</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
           {stage === "组件" && <><div className="context-head"><span>语义组件</span><small>点击或拖到画布</small></div><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索章节、观点、数据"/></label><div className="component-shelf">{filteredComponents.map((item) => <button key={item.kind} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><b>{item.kind}</b><small>{item.detail}</small></p><Icon name="plus" size={14}/></button>)}</div></>}
-          {stage === "交付" && <><div className="context-head"><span>交付清单</span><small>复制前必须通过</small></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul><button className="context-primary" onClick={copyArticle}><Icon name="copy"/>复制公众号排版</button></>}
+          {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>复制标题</b><small>{article.title.length}/64 字</small></span><Icon name="copy" size={15}/></button><button onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>复制作者</b><small>{article.author.length}/8 字</small></span><Icon name="copy" size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul></>}
         </div>
 
         <div className="brand-kit-mini"><span className="brand-avatar">钢</span><div><b>钢铁私塾</b><small>品牌套件已启用</small></div><Icon name="check" size={16}/></div>
@@ -613,9 +653,9 @@ export default function Home() {
           <div className="paper-frame">
             <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
             <article className={`article-page layout-${layoutMode} md-style-${markdownStyle}`} data-md-style={markdownStyle} ref={articleRef}>
-            <header className="article-brandline"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察 · 第 028 期</span></header>
-            <section {...selectProps(-1, "title")}><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：钢铁私塾 唐淼</span><i/></div></div></section>
-            <div className="article-body">
+            <header className="article-brandline" data-copy-exclude="wechat"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察 · 第 028 期</span></header>
+            <section {...selectProps(-1, "title")} data-copy-exclude="wechat"><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：{article.author}</span><i/></div></div></section>
+            <div className="article-body" data-copy-body>
               {article.blocks.map((block, index) => {
                 if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === 1 ? "lead-paragraph" : ""}>{renderInline(block.text)}</p></div>;
                 if (block.type === "heading") { const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length; return <div {...selectProps(index, "heading")} key={`${block.type}-${index}`}><section className="chapter-heading"><span>{String(chapter).padStart(2, "0")}</span><div><small>第 {chapter} 章</small><h2>{block.text}</h2></div></section></div>; }
@@ -625,7 +665,7 @@ export default function Home() {
               })}
               {article.references.length > 0 && <section className="article-references" aria-label="参考资料"><header><span>参考资料</span><small>SOURCES</small></header><ol>{article.references.map((reference) => <li key={`${reference.id}-${reference.url}`}><span>{reference.id.padStart(2, "0")}</span><a href={reference.url}><b>{reference.title}</b><small>{reference.domain}</small></a></li>)}</ol></section>}
             </div>
-            <footer className="article-footer"><span>钢铁私塾</span><p>我们不贩卖焦虑，只研究变化。</p></footer>
+            <footer className="article-footer" data-copy-footer><span>钢铁私塾</span><p>我们不贩卖焦虑，只研究变化。</p></footer>
             </article>
           </div>
         </div>
@@ -641,7 +681,7 @@ export default function Home() {
             ["quote", "观点形成阅读停顿", "1 处判断已识别为观点组件。"], ["list", "并列信息改为行动序列", "末段 4 个动作适合编号表达。"], ["rhythm", "首屏保留一个主命题", "标题与摘要的间距需要更克制。"],
           ].map(([id, title, text], index) => { const applied = adopted.includes(id); return <article className={`suggestion-card ${applied ? "applied" : ""}`} key={id}><div className="suggestion-number">0{index + 1}</div><div><strong>{title}</strong><p>{text}</p></div><button className="proof-action" aria-pressed={applied} onClick={() => adopt(id)}><i/>{applied ? "已采用" : "采用"}</button></article>; })}</div></section>
           <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>交付健康度</span><small>公众号粘贴前的确定性</small></div><span className={diagnostics.length ? "warning-tag" : "pass-tag"}>{diagnostics.length ? "待处理" : "通过"}</span></div>{diagnostics.length ? <ul>{diagnostics.map((item) => <li key={item}><Icon name="warning" size={15}/>{item}<span>定位</span></li>)}</ul> : <ul><li><Icon name="check" size={15}/>层级与段落<span>正常</span></li><li><Icon name="check" size={15}/>图片与链接<span>正常</span></li><li><Icon name="check" size={15}/>微信样式兼容<span>正常</span></li></ul>}</section>
-          <button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制公众号排版</button>
+          <p className="copy-delivery-note">微信标题与作者栏须单独粘贴；正文默认不再重复标题。</p><button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制微信正文</button>
         </div>}
 
         {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">05</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.paper, color: item.ink }}><i style={{ background: item.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
