@@ -118,12 +118,14 @@ type MarkdownStyleKey = keyof typeof markdownStyles;
 const markdownStyleOrder = Object.keys(markdownStyles) as MarkdownStyleKey[];
 type InspectorTab = "智能" | "样式" | "规范" | "品牌";
 type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
-type BlockType = "title" | "paragraph" | "heading" | "quote" | "list";
+type BlockType = "title" | "paragraph" | "heading" | "quote" | "list" | "divider";
 type ArticleBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; text: string }
   | { type: "quote"; text: string }
-  | { type: "list"; items: string[] };
+  | { type: "list"; items: string[] }
+  | { type: "divider" };
+type ArticleReference = { id: string; title: string; url: string; domain: string };
 
 const stageItems: { icon: IconName; title: StageKey; meta: string }[] = [
   { icon: "document", title: "内容", meta: "结构已识别" },
@@ -142,31 +144,105 @@ const components = [
   { kind: "收束", mark: "结", detail: "形成明确的文章结尾", snippet: "\n\n## 结语\n\n在这里写下结论与下一步。" },
 ];
 
+function cleanUrl(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl.replace(/[>）)。，；;]+$/, ""));
+    [...url.searchParams.keys()].forEach((key) => {
+      if (/^utm_/i.test(key) || ["spm", "from", "source"].includes(key.toLowerCase())) url.searchParams.delete(key);
+    });
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function urlDomain(rawUrl: string) {
+  try { return new URL(rawUrl).hostname.replace(/^www\./, ""); }
+  catch { return "外部资料"; }
+}
+
+function plainInline(text: string) {
+  return text
+    .replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, "〔$2〕")
+    .replace(/\[([^\]]+)\]\[(\d+)\]/g, "$1〔$2〕")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1")
+    .replace(/~~(.*?)~~/g, "$1")
+    .trim();
+}
+
+function renderInline(text: string) {
+  const normalized = text
+    .replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, "〔ref:$2〕")
+    .replace(/\[([^\]]+)\]\[(\d+)\]/g, "$1〔ref:$2〕");
+  const tokenPattern = /(\*\*[^*]+\*\*|(?<!\*)\*[^*]+\*(?!\*)|~~[^~]+~~|〔ref:\d+〕|\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s，。；！？、）)]+)/g;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tokenPattern.exec(normalized))) {
+    if (match.index > cursor) parts.push(normalized.slice(cursor, match.index));
+    const token = match[0];
+    if (token.startsWith("**")) parts.push(<strong key={`${match.index}-strong`}>{token.slice(2, -2).trim()}</strong>);
+    else if (token.startsWith("*")) parts.push(<em key={`${match.index}-em`}>{token.slice(1, -1).trim()}</em>);
+    else if (token.startsWith("~~")) parts.push(<s key={`${match.index}-strike`}>{token.slice(2, -2)}</s>);
+    else if (token.startsWith("〔ref:")) parts.push(<sup className="inline-citation" key={`${match.index}-ref`}>〔{token.slice(5, -1)}〕</sup>);
+    else if (token.startsWith("[")) {
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+      if (link) parts.push(<a className="inline-link" href={cleanUrl(link[2])} key={`${match.index}-link`}>{link[1]}</a>);
+    } else {
+      const cleaned = cleanUrl(token);
+      parts.push(<a className="inline-link bare-link" href={cleaned} key={`${match.index}-url`}>{urlDomain(cleaned)}</a>);
+    }
+    cursor = match.index + token.length;
+  }
+  if (cursor < normalized.length) parts.push(normalized.slice(cursor));
+  return parts.length ? parts : text;
+}
+
+function joinParagraph(lines: string[]) {
+  return lines.reduce((result, line) => {
+    if (!result) return line;
+    const chineseJoin = /[\u3400-\u9fff，。！？；：、“”‘’）]$/.test(result) && /^[\u3400-\u9fff“‘（]/.test(line);
+    return `${result}${chineseJoin ? "" : " "}${line}`;
+  }, "");
+}
+
 function parseArticle(markdown: string) {
   const lines = markdown.split(/\r?\n/).map((line) => line.trim());
   let title = "未命名文章";
   const blocks: ArticleBlock[] = [];
+  const references: ArticleReference[] = [];
   let paragraph: string[] = [];
   let list: string[] = [];
-  const flushParagraph = () => { if (paragraph.length) blocks.push({ type: "paragraph", text: paragraph.join(" ") }); paragraph = []; };
+  const flushParagraph = () => { if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph) }); paragraph = []; };
   const flushList = () => { if (list.length) blocks.push({ type: "list", items: list }); list = []; };
 
   lines.forEach((line) => {
     if (!line) { flushParagraph(); flushList(); return; }
-    if (line.startsWith("# ")) { title = line.slice(2).trim(); return; }
-    if (line.startsWith("## ")) { flushParagraph(); flushList(); blocks.push({ type: "heading", text: line.slice(3).replace(/^[一二三四五六七八九十]+、/, "") }); return; }
+    const reference = line.match(/^\[([^\]]+)\]:\s*(https?:\/\/\S+?)(?:\s+["“](.*?)["”])?\s*$/);
+    if (reference) {
+      flushParagraph(); flushList();
+      const url = cleanUrl(reference[2]);
+      references.push({ id: reference[1], title: plainInline(reference[3] || urlDomain(url)), url, domain: urlDomain(url) });
+      return;
+    }
+    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flushParagraph(); flushList(); blocks.push({ type: "divider" }); return; }
+    if (line.startsWith("# ")) { title = plainInline(line.slice(2).trim()); return; }
+    if (line.startsWith("## ")) { flushParagraph(); flushList(); blocks.push({ type: "heading", text: plainInline(line.slice(3).replace(/^[一二三四五六七八九十]+、/, "")) }); return; }
     if (line.startsWith("> ")) { flushParagraph(); flushList(); blocks.push({ type: "quote", text: line.slice(2) }); return; }
     if (/^[-*] /.test(line)) { flushParagraph(); list.push(line.slice(2)); return; }
-    paragraph.push(line.replace(/\*\*(.*?)\*\*/g, "$1"));
+    paragraph.push(line);
   });
   flushParagraph(); flushList();
   const first = blocks.find((block) => block.type === "paragraph") as { type: "paragraph"; text: string } | undefined;
-  const subtitle = first ? `${first.text.slice(0, 42)}${first.text.length > 42 ? "……" : ""}` : "让内容建立秩序，让观点获得形状。";
-  return { title, subtitle, blocks };
+  const firstText = first ? plainInline(first.text) : "";
+  const subtitle = first ? `${firstText.slice(0, 42)}${firstText.length > 42 ? "……" : ""}` : "让内容建立秩序，让观点获得形状。";
+  return { title, subtitle, blocks, references };
 }
 
 function blockLabel(type: BlockType) {
-  return ({ title: "标题", paragraph: "正文", heading: "章节", quote: "观点", list: "行动列表" } as const)[type];
+  return ({ title: "标题", paragraph: "正文", heading: "章节", quote: "观点", list: "行动列表", divider: "分隔" } as const)[type];
 }
 
 export default function Home() {
@@ -191,6 +267,7 @@ export default function Home() {
   const [checkingWechat, setCheckingWechat] = useState(false);
   const studioRef = useRef<HTMLElement>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const inspectorPanelRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const previousStage = useRef(stage);
   const previousInspector = useRef(inspector);
@@ -242,6 +319,10 @@ export default function Home() {
       .then((response) => response.json())
       .then((payload) => setWechatStatus(payload))
       .catch(() => setWechatStatus((current) => ({ ...current, message: "连接状态暂不可用" })));
+  }, [inspector]);
+
+  useEffect(() => {
+    if (inspectorPanelRef.current) inspectorPanelRef.current.scrollTop = 0;
   }, [inspector]);
 
   useLayoutEffect(() => {
@@ -536,11 +617,13 @@ export default function Home() {
             <section {...selectProps(-1, "title")}><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：钢铁私塾 唐淼</span><i/></div></div></section>
             <div className="article-body">
               {article.blocks.map((block, index) => {
-                if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === 1 ? "lead-paragraph" : ""}>{block.text}</p></div>;
+                if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === 1 ? "lead-paragraph" : ""}>{renderInline(block.text)}</p></div>;
                 if (block.type === "heading") { const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length; return <div {...selectProps(index, "heading")} key={`${block.type}-${index}`}><section className="chapter-heading"><span>{String(chapter).padStart(2, "0")}</span><div><small>第 {chapter} 章</small><h2>{block.text}</h2></div></section></div>; }
-                if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`${block.type}-${index}`}><blockquote><span>观点</span><p>{block.text}</p></blockquote></div>;
-                return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{item}</b><small>已识别为关键动作，建议保留独立层级。</small></p></li>)}</ol></div>;
+                if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`${block.type}-${index}`}><blockquote><span>观点</span><p>{renderInline(block.text)}</p></blockquote></div>;
+                if (block.type === "divider") return <div {...selectProps(index, "divider")} key={`${block.type}-${index}`}><div className="article-divider" aria-hidden="true"><i/><span>章间留白</span><i/></div></div>;
+                return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{renderInline(item)}</b><small>已识别为关键动作，建议保留独立层级。</small></p></li>)}</ol></div>;
               })}
+              {article.references.length > 0 && <section className="article-references" aria-label="参考资料"><header><span>参考资料</span><small>SOURCES</small></header><ol>{article.references.map((reference) => <li key={`${reference.id}-${reference.url}`}><span>{reference.id.padStart(2, "0")}</span><a href={reference.url}><b>{reference.title}</b><small>{reference.domain}</small></a></li>)}</ol></section>}
             </div>
             <footer className="article-footer"><span>钢铁私塾</span><p>我们不贩卖焦虑，只研究变化。</p></footer>
             </article>
@@ -549,7 +632,7 @@ export default function Home() {
         <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "微信兼容检查通过"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{versions.length} 个恢复点</span></div>
       </section>
 
-      <aside className="inspector-panel">
+      <aside className="inspector-panel" ref={inspectorPanelRef}>
         <div className="inspector-tabs" role="tablist">{(["智能", "样式", "规范", "品牌"] as InspectorTab[]).map((tab, index) => <button key={tab} role="tab" aria-selected={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><em>0{index + 1}</em><span>{tab}</span><i/></button>)}</div>
         {inspector === "智能" && <div className="inspector-content">
           <section className="design-score"><div className="score-ring"><strong>{diagnostics.length ? 86 : 94}</strong><small>设计分</small></div><div><span>节奏清楚，论点获得停顿</span><p>所有建议都可执行、撤回并留下恢复点。</p></div></section>
