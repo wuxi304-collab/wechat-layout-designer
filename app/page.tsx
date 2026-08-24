@@ -176,7 +176,7 @@ export default function Home() {
         entrance
           .from(".topbar", { y: -8, opacity: 0.94, duration: 0.46 })
           .from(".canvas-toolbar", { y: -7, opacity: 0.94, duration: 0.34 }, "-=0.28")
-          .from(".article-page", { y: 26, scale: 0.989, duration: 0.72, ease: "power2.out" }, "-=0.16")
+          .from(".paper-frame", { y: 26, scale: 0.989, duration: 0.72, ease: "power2.out" }, "-=0.16")
           .from(".workflow-item", { x: -8, opacity: 0.9, duration: 0.28, stagger: 0.04 }, "-=0.54")
           .from(".inspector-content > *", { y: 8, opacity: 0.92, duration: 0.3, stagger: 0.05 }, "<");
 
@@ -186,6 +186,36 @@ export default function Home() {
       return () => context.revert();
     });
     return () => media.revert();
+  }, []);
+
+  useLayoutEffect(() => {
+    const root = studioRef.current;
+    const stageElement = root?.querySelector<HTMLElement>(".canvas-stage");
+    const mistElement = root?.querySelector<HTMLElement>(".jiangnan-mist");
+    const paperElement = root?.querySelector<HTMLElement>(".paper-frame");
+    if (!stageElement || !mistElement || !paperElement) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce), (pointer: coarse)").matches) return;
+
+    const mistX = gsap.quickTo(mistElement, "x", { duration: 1.25, ease: "power3.out" });
+    const mistY = gsap.quickTo(mistElement, "y", { duration: 1.25, ease: "power3.out" });
+    const paperX = gsap.quickTo(paperElement, "x", { duration: 0.9, ease: "power3.out" });
+    const paperY = gsap.quickTo(paperElement, "y", { duration: 0.9, ease: "power3.out" });
+
+    const move = (event: PointerEvent) => {
+      const bounds = stageElement.getBoundingClientRect();
+      const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+      const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+      mistX(x * 10); mistY(y * 5);
+      paperX(x * -2.4); paperY(y * -1.6);
+    };
+    const settle = () => { mistX(0); mistY(0); paperX(0); paperY(0); };
+    stageElement.addEventListener("pointermove", move);
+    stageElement.addEventListener("pointerleave", settle);
+    return () => {
+      stageElement.removeEventListener("pointermove", move);
+      stageElement.removeEventListener("pointerleave", settle);
+      gsap.killTweensOf([mistElement, paperElement]);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -314,14 +344,14 @@ export default function Home() {
   return (
     <main ref={studioRef} className="studio-shell" style={{ "--article-accent": currentTheme.accent, "--article-ink": currentTheme.ink, "--article-paper": currentTheme.paper, "--article-size": `${fontSize}px`, "--article-leading": lineHeight } as React.CSSProperties}>
       <header className="topbar">
-        <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>WECHAT EDITORIAL STUDIO</small></div></div>
+        <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>文章有骨，版式有气</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
         <div className="top-actions">
           <button className="icon-button" aria-label="恢复上一版本" onClick={restoreVersion}><Icon name="undo"/></button>
           <button className="icon-button" aria-label="生成恢复版本" onClick={saveVersion}><Icon name="history"/></button>
           <span className="top-divider"/>
           <button className="quiet-action" onClick={() => { setStage("编排"); setInspector("智能"); }}><Icon name="spark" size={15}/>整稿重排</button>
-          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项需要处理` : "发布检查完成：0 项阻断"); }}>发布检查 <Icon name="publish" size={16}/></button>
+          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项需要处理` : "交付检查完成：0 项阻断"); }}>交付检查 <Icon name="publish" size={16}/></button>
         </div>
       </header>
 
@@ -346,7 +376,7 @@ export default function Home() {
 
       <section className="canvas-area">
         <div className="canvas-toolbar">
-          <div><span className="canvas-kicker">设计画布</span><strong>{selected ? `已选中 · ${blockLabel(selected.type)}` : preview === "phone" ? "手机阅读效果" : "桌面阅读效果"}</strong></div>
+          <div><span className="canvas-kicker">纸上工作台</span><strong>{selected ? `正在校订 · ${blockLabel(selected.type)}` : preview === "phone" ? "手机阅读效果" : "桌面阅读效果"}</strong></div>
           <div className="canvas-controls">
             <button className={preview === "phone" ? "selected" : ""} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
             <button className={preview === "desktop" ? "selected" : ""} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
@@ -356,22 +386,26 @@ export default function Home() {
 
         <div className="jiangnan-mist" aria-hidden="true" />
         <div className={`canvas-stage ${preview}`} onClick={() => setSelected(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const snippet = event.dataTransfer.getData("text/plain"); if (snippet) insertComponent(snippet, "语义"); }}>
+          <div className="canvas-atmosphere" aria-hidden="true"><span>烟水入纸</span><i/><small>字句成章</small></div>
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div><div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
-          <article className={`article-page layout-${layoutMode}`} ref={articleRef}>
-            <header className="article-brandline"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category">产业观察 / 028</span></header>
-            <section {...selectProps(-1, "title")}><div className="article-title-block"><span className="article-eyebrow">EDITORIAL NOTE</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：钢铁私塾 唐淼</span><i/></div></div></section>
+          <div className="paper-frame">
+            <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
+            <article className={`article-page layout-${layoutMode}`} ref={articleRef}>
+            <header className="article-brandline"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category">产业观察 · 第 028 期</span></header>
+            <section {...selectProps(-1, "title")}><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：钢铁私塾 唐淼</span><i/></div></div></section>
             <div className="article-body">
               {article.blocks.map((block, index) => {
                 if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === 1 ? "lead-paragraph" : ""}>{block.text}</p></div>;
-                if (block.type === "heading") { const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length; return <div {...selectProps(index, "heading")} key={`${block.type}-${index}`}><section className="chapter-heading"><span>{String(chapter).padStart(2, "0")}</span><div><small>EDITORIAL CHAPTER</small><h2>{block.text}</h2></div></section></div>; }
+                if (block.type === "heading") { const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length; return <div {...selectProps(index, "heading")} key={`${block.type}-${index}`}><section className="chapter-heading"><span>{String(chapter).padStart(2, "0")}</span><div><small>第 {chapter} 章</small><h2>{block.text}</h2></div></section></div>; }
                 if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`${block.type}-${index}`}><blockquote><span>观点</span><p>{block.text}</p></blockquote></div>;
                 return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}><span>{String(itemIndex + 1).padStart(2, "0")}</span><p><b>{item}</b><small>已识别为关键动作，建议保留独立层级。</small></p></li>)}</ol></div>;
               })}
             </div>
             <footer className="article-footer"><span>钢铁私塾</span><p>我们不贩卖焦虑，只研究变化。</p></footer>
-          </article>
+            </article>
+          </div>
         </div>
         <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "微信兼容检查通过"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{versions.length} 个恢复点</span></div>
       </section>
