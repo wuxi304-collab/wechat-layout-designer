@@ -21,6 +21,8 @@ export type CoverArticleProfile = {
   tone: string;
   intent: string;
   signals: string[];
+  companyName: string | null;
+  isEnterprise: boolean;
   category: "industrial" | "technology" | "culture" | "business" | "people" | "science" | "youth" | "general";
 };
 
@@ -69,6 +71,35 @@ const categoryRules: Array<{ category: CoverArticleProfile["category"]; label: s
 
 export const coverStyleCategories: Array<"全部" | CoverStyleCategory> = ["全部", "极简", "中国", "科技", "实验", "插画", "工业"];
 
+const knownEnterpriseNames = [
+  "阿法拉伐", "奥托昆普", "华生精密", "泰来华顿", "兰石重装", "上海实达", "宝武", "青拓", "太钢", "酒钢", "首钢", "浦项", "森松", "中集", "天华院", "烨贸", "查特", "VDM",
+].sort((a, b) => b.length - a.length);
+
+function cleanCompanyCandidate(value: string) {
+  return value
+    .replace(/^[#>*\-\s\d.、一二三四五六七八九十]+/, "")
+    .replace(/[“”‘’《》【】\[\]（）()]/g, "")
+    .trim();
+}
+
+export function detectCompanyName(title: string, markdown: string) {
+  const source = `${title}\n${markdown}`;
+  const lines = source.split(/\r?\n/).map(cleanCompanyCandidate).filter(Boolean).slice(0, 80);
+  const legalEntity = /(?:^|[\s，。；：、])([A-Za-z0-9\u3400-\u9fff·]{2,28}?(?:有限责任公司|股份有限公司|有限公司|集团公司|控股集团|集团|研究院|设计院))(?=$|[\s，。；：、])/;
+  for (const line of lines) {
+    const match = line.match(legalEntity);
+    if (match?.[1]) return match[1];
+  }
+
+  const knownInTitle = knownEnterpriseNames.find((name) => title.includes(name));
+  if (knownInTitle) return knownInTitle;
+
+  const titlePrefix = cleanCompanyCandidate(title.split(/[：:，,｜|—]/)[0] ?? "");
+  const hasEnterpriseContext = /公司|集团|企业|上市|股份|成立于|总部|创始人|董事长|产能|工厂|主营|营收/.test(markdown);
+  const looksLikeNamedEntity = titlePrefix.length >= 2 && titlePrefix.length <= 12 && !/中国|行业|贸易商|企业|市场|未来|为什么|如何|真相|标准/.test(titlePrefix);
+  return hasEnterpriseContext && looksLikeNamedEntity ? titlePrefix : null;
+}
+
 export function analyzeCoverContent(title: string, markdown: string): CoverArticleProfile {
   const text = `${title}\n${markdown}`.toLowerCase();
   const ranked = categoryRules.map((rule) => ({ ...rule, matched: rule.keywords.filter((word) => text.includes(word.toLowerCase())) }))
@@ -77,7 +108,8 @@ export function analyzeCoverContent(title: string, markdown: string): CoverArtic
   const subject = primary && primary.matched.length ? primary.label : "深度观点";
   const tone = /危机|崩塌|事故|真相|大战|困境|焦虑/.test(text) ? "冷静辨析" : /历史|百年|传统|故事/.test(text) ? "叙事沉淀" : /ai|人工智能|数字|未来|技术/.test(text) ? "科技理性" : /钢铁|不锈钢|材料|制造|工业/.test(text) ? "工业理性" : "克制判断";
   const intent = /\?|？|为什么|真相|能否|是否/.test(title) ? "问题拆解" : /对比|vs|替代|不如|区别/i.test(title) ? "对比判断" : /标准|牌号|性能|工艺|机理/.test(text) ? "知识解释" : /人物|其人|创始人|家族|故事/.test(text) ? "人物叙事" : "观点传播";
-  return { subject, tone, intent, signals: primary?.matched.slice(0, 4) ?? [], category: primary?.matched.length ? primary.category : "general" };
+  const companyName = detectCompanyName(title, markdown);
+  return { subject, tone, intent, signals: primary?.matched.slice(0, 4) ?? [], companyName, isEnterprise: Boolean(companyName), category: primary?.matched.length ? primary.category : "general" };
 }
 
 export function recommendCoverStyles(title: string, markdown: string): CoverRecommendation[] {
@@ -94,16 +126,54 @@ export function recommendCoverStyles(title: string, markdown: string): CoverReco
   }).sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
-export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile) {
+export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName) {
+  const resolvedTitle = title === "未命名文章" ? "" : title.trim();
+  const titleBlock = resolvedTitle
+    ? [
+      "【必须排印的唯一主标题】",
+      `“${resolvedTitle}”`,
+      "最终成品必须含有上述标题。逐字照录，一字不漏、一字不改，不增删标点，不调换语序，不使用近义词，不截断；全图只出现这一处主标题。",
+      "采用清晰的中文编辑字体，标题是第一视觉层级；在缩略图尺寸下仍可辨认。断行只能服从语义，不把词组、数字与单位拆开。",
+      "若生图模型不能保证中文准确：先生成无字底图，再用支持精确中文排版的合成步骤叠加上述标题，并逐字校对；不得交付无标题成品。",
+    ]
+    : [
+      "【阻断条件：缺少标题】",
+      "当前没有可用标题。停止生成，先向用户索取最终标题；不得自拟标题，也不得交付无标题封面。",
+    ];
+  const brandBlock = companyName
+    ? [
+      "【企业品牌核验｜必须先完成，未通过不得生成】",
+      `企业主体：${companyName}。`,
+      "1. 生成前先联网核验企业主体，并查找该企业当前使用的官方 Logo。优先来源：企业官网品牌页/媒体资料包、认证公众号或认证官方账号、交易所公告与公司正式披露文件。",
+      "2. 至少用两条权威信号核对企业名称、Logo 图形、标准色与当前版本；搜索结果页、百科、自媒体和素材下载站不能作为唯一依据。",
+      "3. 下载或截取核验通过的官方 Logo 原始资产，把它作为 reference image 交给图像生成或后期合成；不得让生图模型凭文字自行画 Logo。",
+      "4. 保持官方 Logo 的比例、颜色、字形与安全留白；不得重绘、变形、换色、描边、立体化、艺术化，也不得生成所谓‘相似 Logo’。",
+      "5. 若找不到可验证的官方 Logo，或不同来源互相冲突：立即停止并请用户上传官方 Logo 文件。绝不猜测、杜撰或仿制。",
+      "6. 交付时同时列出 Logo 来源 URL 与核验依据；封面只放一次 Logo，且不得压过文章标题。",
+    ]
+    : [
+      "【品牌资产】",
+      "未识别到企业主体：不植入任何第三方 Logo，也不凭空生成品牌标志。若文章实际写某家企业，先补充企业主体并完成官方 Logo 核验。",
+    ];
+
   return [
-    "微信公众号横幅封面，画幅比例 2.35:1，高清，商业编辑级完成度。",
-    `文章主题：《${title === "未命名文章" ? "待补充文章标题" : title}》。`,
+    "【任务】",
+    "制作微信公众号横幅封面，画幅比例严格为 2.35:1（建议 2350×1000 或 900×383），高清，商业编辑级完成度。",
+    ...titleBlock,
+    "【内容判断】",
+    `文章主题：${resolvedTitle ? `《${resolvedTitle}》` : "待补充"}。`,
     `内容画像：${profile.subject}，${profile.tone}，传播目的为${profile.intent}。`,
+    "【视觉执行】",
     `视觉风格：${style.promptStyle}。`,
     `构图：${style.composition}。`,
     `材质与光线：${style.texture}。`,
     `主色：${style.palette.join("、")}，整体最多三种主色。`,
     `必须避免：${style.avoid}。`,
-    "画面不生成品牌 Logo、不出现无意义英文和乱码；为中文标题预留清晰安全区，但图片本身不生成标题文字；主体准确、克制、去 AI 塑料感。",
+    ...brandBlock,
+    "【成品检查｜全部通过才可交付】",
+    "- 标题已真实出现在最终图片中，并与指定标题逐字一致；没有第二标题、乱码或无意义英文。",
+    "- 主体事实准确，画面克制，无廉价模板感、伪 3D 塑料感和多余装饰。",
+    companyName ? "- 官方 Logo 已使用真实参考资产，来源可追溯，形态与标准色未经改造。" : "- 未擅自添加任何企业或机构 Logo。",
+    "- 画幅为 2.35:1，标题与关键主体均处于安全区；企业稿的 Logo 也必须在安全区，移动端缩略图可读。",
   ].join("\n");
 }
