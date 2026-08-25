@@ -398,8 +398,8 @@ export default function Home() {
   const [inspector, setInspector] = useState<InspectorTab>("智能");
   const [stage, setStage] = useState<StageKey>("编排");
   const [preview, setPreview] = useState<"phone" | "desktop">("phone");
-  const [fontSize, setFontSize] = useState(17);
-  const [lineHeight, setLineHeight] = useState(1.96);
+  const [fontSize, setFontSize] = useState(18);
+  const [lineHeight, setLineHeight] = useState(1.94);
   const [fontProfile, setFontProfile] = useState<FontProfile>("classic");
   const [titleScale, setTitleScale] = useState(1);
   const [articleTracking, setArticleTracking] = useState(0.018);
@@ -455,7 +455,7 @@ export default function Home() {
     if (!saved) return;
     try {
       const payload = JSON.parse(saved);
-      if ([2, 3, 4, 5, 6].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
+      if ([2, 3, 4, 5, 6, 7].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
         const timer = window.setTimeout(() => {
           setMarkdown(normalizeMarkdownInput(payload.markdown));
           setSourceEncoding("UTF-8 · 本机草稿");
@@ -463,7 +463,7 @@ export default function Home() {
             if (typeof payload.markdownStyle === "string" && payload.markdownStyle in markdownStyles) setMarkdownStyle(payload.markdownStyle as MarkdownStyleKey);
             if (payload.schemaVersion >= 6 && typeof payload.theme === "string" && payload.theme in themes) setTheme(payload.theme as ThemeKey);
             if (typeof payload.layoutMode === "string" && ["calm", "balanced", "editorial"].includes(payload.layoutMode)) setLayoutMode(payload.layoutMode as LayoutMode);
-            if (typeof payload.fontSize === "number") setFontSize(payload.fontSize);
+            if (typeof payload.fontSize === "number") setFontSize(payload.schemaVersion < 7 ? Math.min(20, payload.fontSize + 1) : payload.fontSize);
             if (typeof payload.lineHeight === "number") setLineHeight(payload.lineHeight);
             if (typeof payload.fontProfile === "string" && ["classic", "literary", "clear"].includes(payload.fontProfile)) setFontProfile(payload.fontProfile as FontProfile);
             if (typeof payload.titleScale === "number") setTitleScale(payload.titleScale);
@@ -476,7 +476,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 6, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
+    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 7, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
     return () => window.clearTimeout(timer);
   }, [articleTracking, fontProfile, fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme, titleScale]);
 
