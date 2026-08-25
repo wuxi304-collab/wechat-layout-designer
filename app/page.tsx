@@ -18,6 +18,7 @@ import {
 import {
   analyzeCoverContent,
   buildCoverPrompt,
+  coverSignature,
   coverStyleCategories,
   coverStyles,
   recommendCoverStyles,
@@ -907,7 +908,7 @@ export default function Home() {
         <div className="canvas-toolbar">
           <div><span className="canvas-kicker">{stage === "封面" ? "封面工作台" : "纸上工作台"}</span><strong>{stage === "封面" ? `${selectedCoverStyle.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
           <div className="canvas-controls">
-            {stage === "封面" ? <><span className="cover-ratio-tag">微信横幅 2.35:1</span><button className="cover-toolbar-copy" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制执行指令</button><button onClick={() => { setStage("视觉"); setInspector("样式"); }}>返回正文设计</button></> : <>
+            {stage === "封面" ? <><span className="cover-ratio-tag">微信横幅 2.35:1</span><button onClick={() => { setStage("视觉"); setInspector("样式"); }}>返回正文设计</button></> : <>
             <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>成稿</button></div>
             <div className="quick-typeset-wrap" ref={typesetRef}>
               <button className={`typeset-launch ${typesetOpen ? "selected" : ""}`} aria-label={`文章排版，当前为${currentMarkdownStyle.name}`} title="打开排版设置，可一键切换版式" aria-haspopup="dialog" aria-expanded={typesetOpen} onClick={() => setTypesetOpen((value) => !value)}><Icon name="style" size={15}/><span>排版</span><b>{currentMarkdownStyle.short}</b></button>
@@ -945,6 +946,7 @@ export default function Home() {
               <span className="cover-concept-index">COVER / {String(coverStyles.findIndex((item) => item.id === selectedCoverStyle.id) + 1).padStart(2, "0")}</span>
               <div className="cover-concept-title"><small>{coverProfile.subject} · {coverProfile.tone}</small><h3>{article.title}</h3><p>{selectedCoverStyle.short} / 最终成品必须准确排印此标题</p></div>
               <div className="cover-concept-visual" aria-hidden="true"><i/><i/><i/><span>主视觉区</span>{effectiveCoverCompany && <div className="cover-logo-slot"><b>官方 LOGO 位</b><small>{effectiveCoverCompany}</small></div>}</div>
+              <div className="cover-signature" aria-label={`固定署名：${coverSignature}`}><i/>{coverSignature}</div>
               <div className="cover-safe-line" aria-hidden="true"><span>标题安全线</span></div>
             </div>
             <div className="cover-analysis-grid"><div><span>构图</span><p>{selectedCoverStyle.composition}</p></div><div><span>材质与光线</span><p>{selectedCoverStyle.texture}</p></div><div><span>适合</span><p>{selectedCoverStyle.fit}</p></div><div><span>避坑</span><p>{selectedCoverStyle.avoid}</p></div></div>

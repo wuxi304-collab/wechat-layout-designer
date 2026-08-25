@@ -32,6 +32,8 @@ export type CoverRecommendation = {
   reason: string;
 };
 
+export const coverSignature = "钢铁私塾 唐淼";
+
 export const coverStyles: CoverStyle[] = [
   { id: "minimal-cold", name: "极简艺术", short: "克制留白", category: "极简", keywords: ["极简", "朴素", "高冷", "留白"], fit: "观点、学术、人物独白", direction: "只留下一个主视觉与一个判断，让沉默也成为画面。", composition: "主体偏置三分法，大面积负空间承接标题", texture: "哑光纸面、柔和自然光、低对比阴影", palette: ["#F7F7F5", "#1B2430", "#B3262E"], signals: ["观点", "判断", "学术", "研究", "人物"], avoid: "不要增加无意义图标、光效与装饰边框", promptStyle: "高级极简编辑摄影，克制留白，哑光质感，低饱和" },
   { id: "minimal-information", name: "信息极简", short: "大字先行", category: "极简", keywords: ["大字号", "信息优先", "层级", "去装饰"], fit: "深度评论、标准解读、行业判断", direction: "先让结论被看见，再让图像承担证据，而不是反过来。", composition: "标题占主导，主视觉压缩为一枚有证据感的局部", texture: "清洁白底、硬朗网格、细线编号", palette: ["#FFFFFF", "#102A43", "#C8323A"], signals: ["标准", "为什么", "真相", "分析", "对比", "价格", "成本"], avoid: "不要用小字堆满封面，也不要把正文摘要搬上去", promptStyle: "瑞士国际主义信息设计，大字号，严格网格，高对比，信息优先" },
@@ -149,7 +151,7 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
       "3. 下载或截取核验通过的官方 Logo 原始资产，把它作为 reference image 交给图像生成或后期合成；不得让生图模型凭文字自行画 Logo。",
       "4. 保持官方 Logo 的比例、颜色、字形与安全留白；不得重绘、变形、换色、描边、立体化、艺术化，也不得生成所谓‘相似 Logo’。",
       "5. 若找不到可验证的官方 Logo，或不同来源互相冲突：立即停止并请用户上传官方 Logo 文件。绝不猜测、杜撰或仿制。",
-      "6. 交付时同时列出 Logo 来源 URL 与核验依据；封面只放一次 Logo，且不得压过文章标题。",
+      "6. 交付时同时列出 Logo 来源 URL 与核验依据；封面只放一次 Logo，优先置于右上安全区，不得压过文章标题，也不得占用右下角固定署名区。",
     ]
     : [
       "【品牌资产】",
@@ -170,8 +172,12 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     `主色：${style.palette.join("、")}，整体最多三种主色。`,
     `必须避免：${style.avoid}。`,
     ...brandBlock,
+    "【固定署名｜必须排印】",
+    `在画面右下角固定排印“${coverSignature}”。必须逐字准确、保持一行，字号明显小于主标题但在手机端仍可辨认；使用克制的中文编辑字体，不加印章、头像、二维码或多余前缀。`,
+    "署名属于最终成品文字层。若生图模型不能准确生成，必须与主标题一起使用精确排版的后期合成步骤叠加；不得遗漏、改写或挪到其他位置。",
     "【成品检查｜全部通过才可交付】",
     "- 标题已真实出现在最终图片中，并与指定标题逐字一致；没有第二标题、乱码或无意义英文。",
+    `- 右下角已准确排印“${coverSignature}”，保持一行，未被图片、Logo 或安全线遮挡。`,
     "- 主体事实准确，画面克制，无廉价模板感、伪 3D 塑料感和多余装饰。",
     companyName ? "- 官方 Logo 已使用真实参考资产，来源可追溯，形态与标准色未经改造。" : "- 未擅自添加任何企业或机构 Logo。",
     "- 画幅为 2.35:1，标题与关键主体均处于安全区；企业稿的 Logo 也必须在安全区，移动端缩略图可读。",
