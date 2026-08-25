@@ -15,6 +15,7 @@ import {
   type MarkdownStyleKey,
   type ThemeKey,
 } from "@/lib/editor/design-system";
+import { detectPlainTextTitle } from "@/lib/editor/title-detection";
 import { inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
 
 type IconName =
@@ -288,8 +289,10 @@ function parseArticle(markdown: string) {
     });
     source = source.slice(frontMatter[0].length);
   }
+  const inferredTitle = detectPlainTextTitle(source, frontMatterTitle);
   const lines = source.split("\n");
-  let title = frontMatterTitle || "未命名文章";
+  if (inferredTitle) lines[inferredTitle.lineIndex] = "";
+  let title = frontMatterTitle || (inferredTitle ? plainInline(inferredTitle.raw) : "未命名文章");
   let author = frontMatterAuthor || "钢铁私塾 唐淼";
   const blocks: ArticleBlock[] = [];
   const references: ArticleReference[] = [];
@@ -449,6 +452,7 @@ export default function Home() {
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
     const items: string[] = [...encodingIssues];
+    if (article.title === "未命名文章") items.push("未识别到标题：请将标题独占首行，或在前面添加 #");
     if (article.title.length > 64) items.push("标题超过微信 64 字上限");
     if (article.author.length > 8) items.push("作者超过微信 8 字上限");
     if (/(?:```|~~~)\s*mermaid/i.test(markdown)) items.push("Mermaid 图需要转为图片");
@@ -967,7 +971,7 @@ export default function Home() {
         {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.palette.accent }}/>当前主题<button onClick={() => setInspector("样式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.palette.ink }}/>墨黑<button onClick={() => setInspector("样式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => notify("品牌署名编辑将在下一版开放")}>编辑</button></label><label><span>结尾</span><b>固定品牌结尾</b><button onClick={() => notify("品牌结尾编辑将在下一版开放")}>编辑</button></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><div className="brand-consistency"><strong>100%</strong><div><i/><span>颜色、署名与语气均一致</span></div></div></section></div>}
       </aside>
 
-      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()}><Icon name="document" size={14}/>导入文件</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small>自动保存于本机</small></span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify(encodingIssues.length ? `已完成分析，发现 ${encodingIssues.length} 项编码风险` : "内容结构与编码检查完成"); }}>分析并编排</button></footer></div></div>}
+      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()}><Icon name="document" size={14}/>导入文件</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : "标题已识别"} · 自动保存于本机</small></span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify(encodingIssues.length ? `已完成分析，发现 ${encodingIssues.length} 项编码风险` : article.title === "未命名文章" ? "正文已编排，但尚未识别标题" : `已识别标题：${article.title}`); }}>分析并编排</button></footer></div></div>}
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );

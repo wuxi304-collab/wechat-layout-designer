@@ -7522,6 +7522,20 @@ body { font-weight: 400; }
 .source-health,
 .source-actions { font-family: var(--font-ui); }
 .source-actions .source-action { font-size: 12.5px; }
+.source-health .title-detected { color: var(--cn-navy-700); }
+.source-health .title-detected::before,
+.source-health .title-missing::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--cn-navy-700);
+  vertical-align: .08em;
+}
+.source-health .title-missing { color: var(--cn-red-700); }
+.source-health .title-missing::before { background: var(--cn-red-600); }
 
 /* 快速排版面板中的辅助文字不能掉回 9px。 */
 .quick-typeset-popover > header span,
