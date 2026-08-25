@@ -7550,3 +7550,78 @@ body { font-weight: 400; }
   .font-profile-grid > button > span { width: 43px; height: 43px; font-size: 24px; }
   .source-drawer textarea { font-size: 16px; line-height: 1.88; }
 }
+
+/* V3.5 · 文末收束：品牌归品牌，交流归交流；留白比挤在一行更有分寸。 */
+.article-page .article-footer {
+  display: block;
+  margin-top: 42px;
+  padding-top: 25px;
+  padding-bottom: 36px;
+}
+.article-footer-brand {
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+.article-page .article-footer-brand > span {
+  display: block;
+  margin: 0 0 7px;
+  color: var(--article-accent);
+  font-family: var(--font-editorial);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.55;
+  letter-spacing: .025em;
+}
+.article-page .article-footer-brand > small {
+  display: block;
+  margin: 0;
+  color: color-mix(in srgb, var(--article-ink) 58%, transparent);
+  font-family: var(--article-reading-font);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: .01em;
+}
+.article-page .article-footer .article-footer-note {
+  display: block;
+  margin: 18px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--article-accent) 24%, transparent);
+  color: color-mix(in srgb, var(--article-ink) 84%, transparent);
+  font-family: var(--font-literary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.9;
+  letter-spacing: .015em;
+  opacity: 1;
+}
+.wechat-dark-preview .article-footer-brand > small {
+  color: var(--article-muted);
+}
+.wechat-dark-preview .article-footer .article-footer-note {
+  border-top-color: var(--article-line);
+  color: var(--article-ink);
+}
+.md-style-collage .article-footer-brand > small {
+  color: rgba(244, 237, 223, .72);
+}
+.md-style-collage .article-footer .article-footer-note {
+  border-top-color: rgba(244, 237, 223, .22);
+  color: #f4eddf;
+}
+
+@media (max-width: 840px) {
+  .article-page .article-footer {
+    margin-top: 34px;
+    padding-top: 21px;
+    padding-bottom: 30px;
+  }
+  .article-page .article-footer-brand > span { font-size: 14.5px; }
+  .article-page .article-footer-brand > small { font-size: 12px; }
+  .article-page .article-footer .article-footer-note {
+    margin-top: 16px;
+    padding-top: 13px;
+    font-size: 13.5px;
+  }
+}
