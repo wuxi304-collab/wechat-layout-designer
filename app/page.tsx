@@ -408,6 +408,8 @@ export default function Home() {
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [darkPreview, setDarkPreview] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<"proof" | "final">("proof");
+  const [typesetOpen, setTypesetOpen] = useState(false);
   const [markdown, setMarkdown] = useState(sampleMarkdown);
   const [sourceEncoding, setSourceEncoding] = useState("UTF-8 · 编辑器");
   const [toast, setToast] = useState("");
@@ -422,6 +424,7 @@ export default function Home() {
   const studioRef = useRef<HTMLElement>(null);
   const articleRef = useRef<HTMLElement>(null);
   const inspectorPanelRef = useRef<HTMLElement>(null);
+  const typesetRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const previousStage = useRef(stage);
   const previousInspector = useRef(inspector);
@@ -491,6 +494,22 @@ export default function Home() {
   useEffect(() => {
     if (inspectorPanelRef.current) inspectorPanelRef.current.scrollTop = 0;
   }, [inspector]);
+
+  useEffect(() => {
+    if (!typesetOpen) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!typesetRef.current?.contains(event.target as Node)) setTypesetOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTypesetOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [typesetOpen]);
 
   useLayoutEffect(() => {
     if (!studioRef.current) return;
@@ -648,6 +667,16 @@ export default function Home() {
     applyMarkdownStyle(markdownStyleOrder[(currentIndex + 1) % markdownStyleOrder.length]);
   }
 
+  function changeWorkspaceView(mode: "proof" | "final") {
+    setWorkspaceView(mode);
+    if (mode === "final") {
+      setSelected(null);
+      setFocusMode(false);
+      setTypewriterMode(false);
+    }
+    notify(mode === "final" ? "已进入成稿视图，校订标记暂时收起" : "已返回校订视图，可继续选择内容块");
+  }
+
   function insertComponent(snippet: string, kind: string) {
     setMarkdown((value) => `${value.trimEnd()}${snippet}\n`);
     setStage("编排");
@@ -783,15 +812,15 @@ export default function Home() {
   }
 
   const selectProps = (index: number, type: BlockType) => ({
-    className: `selectable-block ${selected?.index === index && selected.type === type ? "is-selected" : ""} ${syncedTypes.includes(type) ? "synced-style" : ""}`,
+    className: `selectable-block ${workspaceView === "final" ? "is-readonly" : ""} ${selected?.index === index && selected.type === type ? "is-selected" : ""} ${syncedTypes.includes(type) ? "synced-style" : ""}`,
     "data-block-index": index,
-    role: "button", tabIndex: 0,
-    onClick: (event: React.MouseEvent) => { event.stopPropagation(); setSelected({ index, type }); },
-    onKeyDown: (event: React.KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") setSelected({ index, type }); },
+    role: workspaceView === "proof" ? "button" : undefined, tabIndex: workspaceView === "proof" ? 0 : -1,
+    onClick: (event: React.MouseEvent) => { event.stopPropagation(); if (workspaceView === "proof") setSelected({ index, type }); },
+    onKeyDown: (event: React.KeyboardEvent) => { if (workspaceView === "proof" && (event.key === "Enter" || event.key === " ")) setSelected({ index, type }); },
   });
 
   return (
-    <main ref={studioRef} className={`studio-shell ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
+    <main ref={studioRef} className={`studio-shell ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>江南编辑书房 · 文章有骨</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
@@ -831,11 +860,21 @@ export default function Home() {
 
       <section className="canvas-area">
         <div className="canvas-toolbar">
-          <div><span className="canvas-kicker">纸上工作台</span><strong>{selected ? `正在校订 · ${blockLabel(selected.type)}` : preview === "phone" ? "手机阅读效果" : "桌面阅读效果"}</strong></div>
+          <div><span className="canvas-kicker">纸上工作台</span><strong>{workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
           <div className="canvas-controls">
-            <button className="quick-style-cycle" onClick={cycleMarkdownStyle} aria-label={`一键切换版式，当前为${currentMarkdownStyle.name}`} title="一键切换下一套 Markdown 版式"><Icon name="brush" size={15}/><span>换版</span><b>{currentMarkdownStyle.short}</b></button><span/>
-            <button className={`writing-mode-toggle ${focusMode ? "selected" : ""}`} aria-pressed={focusMode} onClick={() => { setFocusMode((value) => !value); notify(focusMode ? "已退出专注校订" : "已进入专注校订，选择一个段落开始"); }} title="淡化当前内容块之外的文字"><Icon name="spark" size={14}/><b>专注</b></button>
-            <button className={`writing-mode-toggle ${typewriterMode ? "selected" : ""}`} aria-pressed={typewriterMode} onClick={() => { setTypewriterMode((value) => !value); notify(typewriterMode ? "已退出居中阅读" : "已开启居中阅读，所选段落保持在视线中央"); }} title="让所选内容块保持在视线中央"><Icon name="structure" size={14}/><b>居中</b></button><span/>
+            <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>成稿</button></div>
+            <div className="quick-typeset-wrap" ref={typesetRef}>
+              <button className={`typeset-launch ${typesetOpen ? "selected" : ""}`} aria-label={`文章排版，当前为${currentMarkdownStyle.name}`} title="打开排版设置，可一键切换版式" aria-haspopup="dialog" aria-expanded={typesetOpen} onClick={() => setTypesetOpen((value) => !value)}><Icon name="style" size={15}/><span>排版</span><b>{currentMarkdownStyle.short}</b></button>
+              {typesetOpen && <div className="quick-typeset-popover" role="dialog" aria-label="快速排版">
+                <header><div><span>文章排版</span><strong>{currentMarkdownStyle.name}</strong></div><button aria-label="关闭快速排版" onClick={() => setTypesetOpen(false)}><Icon name="close" size={15}/></button></header>
+                <section><div className="quick-typeset-label"><span>版式骨架</span><small>真实小样，而非主题名列表</small></div><div className="quick-style-grid">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme].palette; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className="quick-style-sheet" style={{ "--quick-paper": palette.paper, "--quick-ink": palette.ink, "--quick-accent": palette.accent } as React.CSSProperties}><i/><b/><b/><small/></span><span><b>{item.name}</b><small>{item.fit}</small></span><em>{markdownStyle === key ? "已用" : `0${index + 1}`}</em></button>; })}</div></section>
+                <section><div className="quick-typeset-label"><span>阅读密度</span><small>字号、行距与段距联动</small></div><div className="quick-density-switch">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}<i/></button>)}</div></section>
+                <section><div className="quick-typeset-label"><span>纸墨气质</span><small>只换颜色，不动章法</small></div><div className="quick-palette-row">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-label={item.name} aria-pressed={theme === key} title={item.name} onClick={() => setTheme(key)} style={{ "--quick-paper": item.palette.paper, "--quick-ink": item.palette.ink, "--quick-accent": item.palette.accent } as React.CSSProperties}><i/><span>{item.name}</span></button>)}</div></section>
+                <footer><button onClick={cycleMarkdownStyle}><Icon name="brush" size={14}/>换下一套</button><button className="strong" onClick={() => { setStage("视觉"); setInspector("样式"); setTypesetOpen(false); }}>完整样式设置<Icon name="chevron" size={14}/></button></footer>
+              </div>}
+            </div><span/>
+            {workspaceView === "proof" && <><button className={`writing-mode-toggle ${focusMode ? "selected" : ""}`} aria-pressed={focusMode} onClick={() => { setFocusMode((value) => !value); notify(focusMode ? "已退出专注校订" : "已进入专注校订，选择一个段落开始"); }} title="淡化当前内容块之外的文字"><Icon name="spark" size={14}/><b>专注</b></button>
+            <button className={`writing-mode-toggle ${typewriterMode ? "selected" : ""}`} aria-pressed={typewriterMode} onClick={() => { setTypewriterMode((value) => !value); notify(typewriterMode ? "已退出居中阅读" : "已开启居中阅读，所选段落保持在视线中央"); }} title="让所选内容块保持在视线中央"><Icon name="structure" size={14}/><b>居中</b></button><span/></>}
             <button className={`writing-mode-toggle dark-preview-toggle ${darkPreview ? "selected" : ""}`} aria-pressed={darkPreview} onClick={() => { setDarkPreview((value) => !value); notify(darkPreview ? "已返回微信浅色预览" : "已切换微信语义深色预览"); }} title="按微信深色语义预览，不影响复制样式"><Icon name="moon" size={14}/><b>{darkPreview ? "浅色" : "深色"}</b></button><span/>
             <button className={preview === "phone" ? "selected" : ""} aria-pressed={preview === "phone"} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
             <button className={preview === "desktop" ? "selected" : ""} aria-pressed={preview === "desktop"} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
