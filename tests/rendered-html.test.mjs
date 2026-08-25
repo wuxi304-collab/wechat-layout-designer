@@ -33,6 +33,8 @@ test("renders production editorial metadata", async () => {
   assert.match(html, /一键切换版式/);
   assert.match(html, /按微信深色语义预览/);
   assert.match(html, /笔者才疏学浅，有建议欢迎评论交流！/);
+  assert.match(html, /智能荐图/);
+  assert.match(html, />封面</);
   assert.match(html, /data-md-style=["']jiangnan["']/);
   assert.doesNotMatch(html, /codex-preview/i);
 });

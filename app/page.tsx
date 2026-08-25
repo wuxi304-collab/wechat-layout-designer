@@ -15,6 +15,14 @@ import {
   type MarkdownStyleKey,
   type ThemeKey,
 } from "@/lib/editor/design-system";
+import {
+  analyzeCoverContent,
+  buildCoverPrompt,
+  coverStyleCategories,
+  coverStyles,
+  recommendCoverStyles,
+  type CoverStyleCategory,
+} from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
 import { inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
 
@@ -67,8 +75,8 @@ const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么
 - 把加工风险提前暴露
 - 把售后责任写进流程`;
 
-type InspectorTab = "智能" | "样式" | "规范" | "品牌";
-type StageKey = "内容" | "编排" | "视觉" | "组件" | "交付";
+type InspectorTab = "智能" | "样式" | "封面" | "规范" | "品牌";
+type StageKey = "内容" | "编排" | "视觉" | "封面" | "组件" | "交付";
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider" | "table" | "alert" | "image";
 type ArticleBlock =
@@ -97,6 +105,7 @@ const stageItems: { icon: IconName; title: StageKey; meta: string }[] = [
   { icon: "document", title: "内容", meta: "结构已识别" },
   { icon: "structure", title: "编排", meta: "3 项可执行" },
   { icon: "style", title: "视觉", meta: "品牌气质" },
+  { icon: "assets", title: "封面", meta: "智能荐图" },
   { icon: "assets", title: "组件", meta: "语义模块" },
   { icon: "check", title: "交付", meta: "兼容检查" },
 ];
@@ -429,6 +438,8 @@ export default function Home() {
   const [capturedType, setCapturedType] = useState<BlockType | null>(null);
   const [syncedTypes, setSyncedTypes] = useState<BlockType[]>([]);
   const [componentQuery, setComponentQuery] = useState("");
+  const [coverStyleId, setCoverStyleId] = useState("");
+  const [coverCategory, setCoverCategory] = useState<"全部" | CoverStyleCategory>("全部");
   const [versions, setVersions] = useState<{ markdown: string; label: string }[]>([]);
   const [wechatStatus, setWechatStatus] = useState<{ configured: boolean; connected: boolean; mode: string; appId: string | null; message: string }>({ configured: false, connected: false, mode: "未配置", appId: null, message: "尚未检查连接" });
   const [checkingWechat, setCheckingWechat] = useState(false);
@@ -448,6 +459,11 @@ export default function Home() {
   const encodingIssues = useMemo(() => findEncodingIssues(markdown), [markdown]);
   const wordCount = useMemo(() => safeMarkdown.replace(/[#>*`\-]/g, "").trim().length, [safeMarkdown]);
   const article = useMemo(() => parseArticle(safeMarkdown), [safeMarkdown]);
+  const coverProfile = useMemo(() => analyzeCoverContent(article.title, safeMarkdown), [article.title, safeMarkdown]);
+  const coverRecommendations = useMemo(() => recommendCoverStyles(article.title, safeMarkdown), [article.title, safeMarkdown]);
+  const selectedCoverStyle = useMemo(() => coverStyles.find((item) => item.id === coverStyleId) ?? coverRecommendations[0].style, [coverRecommendations, coverStyleId]);
+  const filteredCoverStyles = useMemo(() => coverCategory === "全部" ? coverStyles : coverStyles.filter((item) => item.category === coverCategory), [coverCategory]);
+  const coverPrompt = useMemo(() => buildCoverPrompt(selectedCoverStyle, article.title, coverProfile), [article.title, coverProfile, selectedCoverStyle]);
   const outline = useMemo(() => article.blocks.map((block, index) => block.type === "heading" || block.type === "subheading" ? { index, type: block.type, text: block.text } : null).filter((item): item is { index: number; type: "heading" | "subheading"; text: string } => Boolean(item)), [article.blocks]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
@@ -584,6 +600,10 @@ export default function Home() {
     const context = gsap.context(() => {
       gsap.fromTo(".left-context > *", { y: 8, opacity: 0.72, filter: "blur(2px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.46, stagger: 0.055, ease: "power2.out", clearProps: "transform,opacity,filter" });
       gsap.fromTo(".workflow-item.active .workflow-icon", { scale: 0.91, rotate: -2 }, { scale: 1, rotate: 0, duration: 0.48, ease: "power3.out", clearProps: "transform" });
+      if (stage === "封面") {
+        gsap.fromTo(".cover-workbench", { y: 14, opacity: 0.6, scale: 0.99 }, { y: 0, opacity: 1, scale: 1, duration: 0.58, ease: "power3.out", clearProps: "transform,opacity" });
+        gsap.fromTo(".cover-analysis-grid > div", { y: 7, opacity: 0 }, { y: 0, opacity: 1, duration: 0.36, stagger: 0.07, ease: "sine.out", clearProps: "transform,opacity" });
+      }
     }, studioRef);
     return () => context.revert();
   }, [stage]);
@@ -766,6 +786,15 @@ export default function Home() {
     }
   }
 
+  async function copyCoverPrompt() {
+    try {
+      await navigator.clipboard.writeText(coverPrompt);
+      notify(`“${selectedCoverStyle.name}”封面指令已复制`);
+    } catch {
+      notify("浏览器未允许复制封面指令，请重试");
+    }
+  }
+
   async function copyArticle() {
     if (encodingIssues.length) {
       setInspector("智能");
@@ -854,7 +883,7 @@ export default function Home() {
         </section>
         <div className="panel-label">设计流程</div>
         <nav className="workflow-nav" aria-label="设计流程">
-          {stageItems.map((item, index) => <button key={item.title} className={`workflow-item ${stage === item.title ? "active" : ""}`} onClick={() => { setStage(item.title); if (item.title === "视觉") setInspector("样式"); if (item.title === "交付") setInspector("智能"); }}>
+          {stageItems.map((item, index) => <button key={item.title} className={`workflow-item ${stage === item.title ? "active" : ""}`} onClick={() => { setStage(item.title); if (item.title === "视觉") setInspector("样式"); if (item.title === "封面") { setInspector("封面"); setTypesetOpen(false); setSelected(null); } if (item.title === "交付") setInspector("智能"); }}>
             <span className="workflow-index">0{index + 1}</span><span className="workflow-icon"><Icon name={item.icon}/></span><span className="workflow-copy"><b>{item.title}</b><small>{item.meta}</small></span>
           </button>)}
         </nav>
@@ -863,6 +892,7 @@ export default function Home() {
           {stage === "内容" && <><div className="context-head"><span>文章大纲</span><small>{outline.length + 1} 个层级</small></div><div className="article-outline"><button className="outline-title" onClick={() => { setSelected({ index: -1, type: "title" }); articleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><i>题</i><span>{article.title}</span></button>{outline.map((item) => <button key={`${item.type}-${item.index}`} className={item.type === "subheading" ? "outline-subheading" : ""} onClick={() => jumpToBlock(item.index, item.type)}><i>{item.type === "heading" ? "章" : "节"}</i><span>{item.text}</span></button>)}</div></>}
           {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
           {stage === "视觉" && <><div className="context-head"><span>Markdown 版式</span><small>一键换骨，不动正文</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].palette.accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
+          {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><span className="cover-mini-palette">{item.style.palette.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><b>{item.style.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>)}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制当前生图指令</button></>}
           {stage === "组件" && <><div className="context-head"><span>语义组件</span><small>点击或拖到画布</small></div><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索章节、观点、数据"/></label><div className="component-shelf">{filteredComponents.map((item) => <button key={item.kind} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><b>{item.kind}</b><small>{item.detail}</small></p><Icon name="plus" size={14}/></button>)}</div></>}
           {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>复制标题</b><small>{article.title.length}/64 字</small></span><Icon name="copy" size={15}/></button><button onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>复制作者</b><small>{article.author.length}/8 字</small></span><Icon name="copy" size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul></>}
         </div>
@@ -872,8 +902,9 @@ export default function Home() {
 
       <section className="canvas-area">
         <div className="canvas-toolbar">
-          <div><span className="canvas-kicker">纸上工作台</span><strong>{workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
+          <div><span className="canvas-kicker">{stage === "封面" ? "封面工作台" : "纸上工作台"}</span><strong>{stage === "封面" ? `${selectedCoverStyle.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
           <div className="canvas-controls">
+            {stage === "封面" ? <><span className="cover-ratio-tag">微信横幅 2.35:1</span><button className="cover-toolbar-copy" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制生图指令</button><button onClick={() => { setStage("视觉"); setInspector("样式"); }}>返回正文设计</button></> : <>
             <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>成稿</button></div>
             <div className="quick-typeset-wrap" ref={typesetRef}>
               <button className={`typeset-launch ${typesetOpen ? "selected" : ""}`} aria-label={`文章排版，当前为${currentMarkdownStyle.name}`} title="打开排版设置，可一键切换版式" aria-haspopup="dialog" aria-expanded={typesetOpen} onClick={() => setTypesetOpen((value) => !value)}><Icon name="style" size={15}/><span>排版</span><b>{currentMarkdownStyle.short}</b></button>
@@ -891,6 +922,7 @@ export default function Home() {
             <button className={preview === "phone" ? "selected" : ""} aria-pressed={preview === "phone"} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
             <button className={preview === "desktop" ? "selected" : ""} aria-pressed={preview === "desktop"} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
             <button onClick={() => setSourceOpen(true)}>查看原稿</button>
+            </>}
           </div>
         </div>
 
@@ -904,7 +936,17 @@ export default function Home() {
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div><div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
-          <div className="paper-frame">
+          {stage === "封面" ? <section className="cover-workbench" onClick={(event) => event.stopPropagation()} style={{ "--cover-paper": selectedCoverStyle.palette[0], "--cover-ink": selectedCoverStyle.palette[1], "--cover-accent": selectedCoverStyle.palette[2] } as React.CSSProperties}>
+            <header className="cover-workbench-head"><div><span>封面设计建议</span><h2>{selectedCoverStyle.name}</h2><p>{selectedCoverStyle.direction}</p></div><strong><b>{coverRecommendations.find((item) => item.style.id === selectedCoverStyle.id)?.score ?? 88}</b><small>匹配度</small></strong></header>
+            <div className="cover-concept-canvas" aria-label={`${selectedCoverStyle.name}封面构图草图`}>
+              <span className="cover-concept-index">COVER / {String(coverStyles.findIndex((item) => item.id === selectedCoverStyle.id) + 1).padStart(2, "0")}</span>
+              <div className="cover-concept-title"><small>{coverProfile.subject} · {coverProfile.tone}</small><h3>{article.title}</h3><p>{selectedCoverStyle.short} / 为中文标题预留安全区</p></div>
+              <div className="cover-concept-visual" aria-hidden="true"><i/><i/><i/><span>主视觉区</span></div>
+              <div className="cover-safe-line" aria-hidden="true"><span>标题安全线</span></div>
+            </div>
+            <div className="cover-analysis-grid"><div><span>构图</span><p>{selectedCoverStyle.composition}</p></div><div><span>材质与光线</span><p>{selectedCoverStyle.texture}</p></div><div><span>适合</span><p>{selectedCoverStyle.fit}</p></div><div><span>避坑</span><p>{selectedCoverStyle.avoid}</p></div></div>
+            <footer className="cover-workbench-foot"><div className="cover-palette"><span>配色</span>{selectedCoverStyle.palette.map((color) => <i key={color} style={{ background: color }} title={color}/>)}</div><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制完整生图指令</button></footer>
+          </section> : <div className="paper-frame">
             <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
             <article lang="zh-CN" className={`article-page layout-${layoutMode} md-style-${markdownStyle} font-${fontProfile} ${darkPreview ? "wechat-dark-preview" : ""} ${focusMode && selected ? "focus-active" : ""}`} data-md-style={markdownStyle} ref={articleRef}>
             <header className="article-brandline" data-copy-exclude="wechat"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察 · 第 028 期</span></header>
@@ -933,13 +975,13 @@ export default function Home() {
               <p className="article-footer-note">笔者才疏学浅，有建议欢迎评论交流！</p>
             </footer>
             </article>
-          </div>
+          </div>}
         </div>
         <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "微信兼容检查通过"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
       </section>
 
       <aside className="inspector-panel" ref={inspectorPanelRef}>
-        <div className="inspector-tabs" role="tablist">{(["智能", "样式", "规范", "品牌"] as InspectorTab[]).map((tab, index) => <button key={tab} role="tab" aria-selected={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><em>0{index + 1}</em><span>{tab}</span><i/></button>)}</div>
+        <div className="inspector-tabs" role="tablist">{(["智能", "样式", "封面", "规范", "品牌"] as InspectorTab[]).map((tab, index) => <button key={tab} role="tab" aria-selected={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => { setInspector(tab); if (tab === "封面") { setStage("封面"); setTypesetOpen(false); setSelected(null); } }}><em>0{index + 1}</em><span>{tab}</span><i/></button>)}</div>
         {inspector === "智能" && <div className="inspector-content">
           <section className="design-score"><div className="score-ring"><strong>{diagnostics.length ? 86 : 94}</strong><small>设计分</small></div><div><span>节奏清楚，论点获得停顿</span><p>所有建议都可执行、撤回并留下恢复点。</p></div></section>
           <section className="inspector-section layout-director"><div className="section-heading"><div><span>整稿导演</span><small>一次决定全文密度与节奏</small></div><Icon name="spark" size={17}/></div><div className="strategy-switch">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}<i/></button>)}</div><button className="apply-all" onClick={() => applyLayout(layoutMode)}>执行全文重排<span>不改一个字</span></button></section>
@@ -951,6 +993,13 @@ export default function Home() {
         </div>}
 
         {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme].palette; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.palette.paper, color: item.palette.ink }}><i style={{ background: item.palette.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section font-profile-section"><div className="section-heading"><div><span>字体气质</span><small>优先调用可用字库，缺字自动回退</small></div></div><div className="font-profile-grid">{fontProfiles.map((item) => <button key={item.key} className={fontProfile === item.key ? "active" : ""} aria-pressed={fontProfile === item.key} onClick={() => { setFontProfile(item.key); notify(`已切换为“${item.name}”字体气质`); }}><span>{item.sample}</span><div><b>{item.name}</b><small>{item.detail}</small></div><i>{fontProfile === item.key ? "正在使用" : "选择"}</i></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/><label><span><b>标题尺度</b><small>避免标题压住正文</small></span><output>{Math.round(titleScale * 100)}%</output></label><input type="range" min="0.86" max="1.1" step="0.02" value={titleScale} onChange={(event) => setTitleScale(Number(event.target.value))}/><label><span><b>正文字距</b><small>密不逼仄，疏不散漫</small></span><output>{articleTracking.toFixed(3)}</output></label><input type="range" min="0" max="0.04" step="0.002" value={articleTracking} onChange={(event) => setArticleTracking(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+
+        {inspector === "封面" && <div className="inspector-content cover-inspector">
+          <section className="cover-reading-card"><header><span><Icon name="spark" size={15}/>文章画像</span><small>已分析标题与正文语义</small></header><div><b>{coverProfile.subject}</b><b>{coverProfile.tone}</b><b>{coverProfile.intent}</b></div><p>{coverProfile.signals.length ? `识别线索：${coverProfile.signals.join("、")}` : "当前稿件线索较少，先按深度观点类内容推荐。"}</p></section>
+          <section className="inspector-section cover-recommend-section"><div className="section-heading"><div><span>首选方案</span><small>推荐不是审判，理由必须说得明白</small></div><span className="suggestion-count">03</span></div><div className="cover-recommend-list">{coverRecommendations.map((item, index) => <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><span className="cover-style-swatch">{item.style.palette.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><strong>{item.style.name}</strong><small>{item.reason}</small></span><b>{item.score}</b></button>)}</div></section>
+          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverStyle.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制完整生图指令</button></section>
+          <section className="inspector-section cover-library"><div className="section-heading"><div><span>24种封面风格</span><small>按内容选语言，不按流行贴皮肤</small></div><span className="style-count">24</span></div><div className="cover-category-filter">{coverStyleCategories.map((category) => <button key={category} className={coverCategory === category ? "active" : ""} onClick={() => setCoverCategory(category)}>{category}</button>)}</div><div className="cover-style-library">{filteredCoverStyles.map((item) => <button key={item.id} className={selectedCoverStyle.id === item.id ? "active" : ""} onClick={() => setCoverStyleId(item.id)}><span className="cover-library-palette">{item.palette.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><b>{item.name}</b><small>{item.short}</small></span><em>{String(coverStyles.findIndex((style) => style.id === item.id) + 1).padStart(2, "0")}</em></button>)}</div></section>
+        </div>}
 
         {inspector === "规范" && <div className="inspector-content standards-panel">
           <section className="inspector-section"><div className="section-heading"><div><span>微信公众号排版规范</span><small>区分平台兼容与品牌建议</small></div><span className="pass-tag">已校验</span></div><ul className="rule-ledger">
