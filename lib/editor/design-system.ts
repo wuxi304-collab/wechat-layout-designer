@@ -97,9 +97,9 @@ export const markdownStyleOrder: MarkdownStyleKey[] = ["collage", "jiangnan", "e
 export const titleBaseSizes: Record<MarkdownStyleKey, number> = { jiangnan: 34, editorial: 36, technical: 32, essay: 35, minimal: 32, spring: 34, collage: 34 };
 
 export const fontProfiles: { key: FontProfile; name: string; sample: string; detail: string }[] = [
-  { key: "classic", name: "雅宋", sample: "永", detail: "标题有骨，长文耐读" },
-  { key: "literary", name: "书卷", sample: "墨", detail: "楷意题签，仿宋正文" },
-  { key: "clear", name: "清朗", sample: "读", detail: "现代正文，手机更清楚" },
+  { key: "classic", name: "刊宋", sample: "刊", detail: "宋体正文 · 稳重长文" },
+  { key: "literary", name: "文楷", sample: "文", detail: "文楷题签 · 人文随笔" },
+  { key: "clear", name: "屏读黑", sample: "读", detail: "黑体正文 · 手机清晰" },
 ];
 
 export function themeCssVariables(theme: ThemeTokens, darkPreview: boolean) {

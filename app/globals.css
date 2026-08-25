@@ -7310,3 +7310,229 @@ body { font-size: 15px; color: var(--cn-text); }
   .quick-style-grid > button,
   .quick-palette-row > button { animation: none; transition: none; }
 }
+
+/* V3.4 · 中文字体系统：字库有回退，标题有骨，正文有气，标签不再挤眉弄眼 */
+:root {
+  --font-ui: "Inter Variable", "SF Pro Text", "Segoe UI Variable Text", "HarmonyOS Sans SC", MiSans, "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-editorial: "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", STSong, SimSun, Georgia, serif;
+  --font-reading-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", STSong, SimSun, serif;
+  --font-literary: "LXGW WenKai Screen", "LXGW WenKai", "Kaiti SC", "Kaiti TC", KaiTi, STKaiti, FangSong, var(--font-editorial);
+  --font-fangsong: FangSong, "FangSong_GB2312", "Noto Serif CJK SC", "Source Han Serif SC", STSong, serif;
+  --font-number: "Inter Variable", "SF Pro Display", "Segoe UI Variable Display", "Avenir Next", Arial, sans-serif;
+  --font-code: "Sarasa Mono SC", "Sarasa Fixed SC", "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-source: "Sarasa Mono SC", "Sarasa Fixed SC", "LXGW WenKai Mono", "SFMono-Regular", "Cascadia Mono", Consolas, var(--font-ui);
+}
+
+html {
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+body,
+button,
+input,
+textarea,
+output {
+  font-family: var(--font-ui);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+}
+body { font-weight: 400; }
+
+/* 字体角色：系统信息用黑体，刊物身份与文章标题用宋体，题签才用楷体。 */
+.product-mark strong,
+.document-name,
+.section-heading > div span,
+.context-head span,
+.brand-preview-card strong,
+.quick-typeset-popover > header strong { font-family: var(--font-editorial); }
+.product-mark small,
+.canvas-atmosphere,
+.ink-scent,
+.paper-folio { font-family: var(--font-literary); }
+.workflow-copy,
+.inspector-tabs,
+.strategy-switch,
+.suggestion-card,
+.markdown-style-gallery,
+.font-profile-grid,
+.control-stack,
+.delivery-shortcuts,
+.compatibility-card,
+.rule-ledger { font-family: var(--font-ui); }
+.workflow-index,
+.inspector-tabs button em,
+.style-count,
+.suggestion-count,
+.suggestion-number,
+.md-style-index,
+.control-stack output,
+.statusbar,
+.article-category { font-family: var(--font-number); font-variant-numeric: tabular-nums lining-nums; }
+
+/* 中文标签不需要英文式的大字距；层级交给字号、字重和留白。 */
+.product-mark strong { font-weight: 600; letter-spacing: .025em; }
+.product-mark small { letter-spacing: .075em; }
+.panel-label { font-family: var(--font-ui); font-weight: 600; letter-spacing: .055em; }
+.workflow-copy b,
+.workflow-item.active .workflow-copy b { font-family: var(--font-ui); font-weight: 600; letter-spacing: .012em; }
+.workflow-copy small,
+.workflow-item.active .workflow-copy small { letter-spacing: 0; }
+.inspector-tabs button span { font-weight: 500; letter-spacing: .015em; }
+.inspector-tabs button:hover span { letter-spacing: .025em; }
+.inspector-tabs button.active span { font-weight: 600; letter-spacing: .025em; }
+.section-heading > div span,
+.context-head span { font-weight: 600; letter-spacing: .018em; }
+.primary-action,
+.quiet-action,
+.copy-delivery,
+.connection-test,
+.source-action,
+.source-drawer footer button { font-weight: 600; letter-spacing: .015em; }
+.pass-tag,
+.warning-tag,
+.proof-action,
+.theme-grid button > em,
+.quick-typeset-popover > header span,
+.quick-style-grid > button > em { letter-spacing: .015em; }
+
+/* 三套文章气质使用同一套语义槽位，字体缺失时逐级回退，不让版式坍塌。 */
+.article-page.font-classic {
+  --article-display-font: var(--font-editorial);
+  --article-reading-font: var(--font-reading-serif);
+  --md-display-font: var(--article-display-font);
+  --md-body-font: var(--article-reading-font);
+}
+.article-page.font-literary {
+  --article-display-font: var(--font-literary);
+  --article-reading-font: var(--font-fangsong);
+  --md-display-font: var(--article-display-font);
+  --md-body-font: var(--article-reading-font);
+}
+.article-page.font-clear {
+  --article-display-font: var(--font-editorial);
+  --article-reading-font: var(--font-ui);
+  --md-display-font: var(--article-display-font);
+  --md-body-font: var(--article-reading-font);
+}
+.article-page {
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  line-break: strict;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hanging-punctuation: first allow-end;
+}
+.article-title-block h1,
+.chapter-heading h2,
+.article-subheading { font-weight: 600; text-wrap: balance; }
+.article-body,
+.article-body .selectable-block > p {
+  font-family: var(--article-reading-font);
+  font-weight: 400;
+  line-break: strict;
+  text-justify: inter-character;
+}
+.article-page.font-literary .article-body .selectable-block > p { font-weight: 400; letter-spacing: .018em; }
+.article-page.font-classic .article-body .selectable-block > p { font-weight: 400; letter-spacing: var(--article-tracking, .018em); }
+.article-page.font-clear .article-body .selectable-block > p { font-weight: 400; letter-spacing: .004em; }
+.article-body a,
+.article-references a,
+.article-footnotes a,
+.article-code,
+.article-code code,
+.article-code pre,
+.article-body code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.article-code,
+.article-code code,
+.article-code pre,
+.article-body code { font-family: var(--font-code); font-variant-ligatures: none; }
+.article-body a,
+.article-references a,
+.article-footnotes a {
+  text-decoration-thickness: .07em;
+  text-underline-offset: .24em;
+  text-decoration-skip-ink: auto;
+}
+@supports (text-spacing-trim: trim-start) {
+  .article-title-block h1,
+  .chapter-heading h2,
+  .article-subheading,
+  .article-body { text-spacing-trim: trim-start; }
+}
+@supports (text-autospace: normal) {
+  .article-title-block h1,
+  .chapter-heading h2,
+  .article-subheading,
+  .article-body { text-autospace: normal; }
+  .article-code,
+  .article-body code,
+  .article-references a { text-autospace: no-autospace; }
+}
+
+/* 纸面的小字也必须能读：它们是信息，不是给截图添灰度的装饰。 */
+.article-account b { font-size: 13px; font-weight: 600; letter-spacing: .015em; }
+.article-account small { font-size: 10.5px; letter-spacing: .045em; }
+.article-category { font-size: 10.5px; letter-spacing: .025em; }
+.article-eyebrow { font-family: var(--font-literary); font-size: 11px; letter-spacing: .1em; }
+.article-title-block > p { font-size: 14.5px; letter-spacing: .01em; }
+.article-byline { font-family: var(--font-ui); font-size: 11.5px; letter-spacing: .015em; }
+.chapter-heading small { font-size: 10.5px; letter-spacing: .07em; }
+.article-subheading > span { font-size: 10px; letter-spacing: .06em; }
+.article-body blockquote > span { font-size: 10px; letter-spacing: .055em; }
+.designed-list small,
+.article-figure figcaption,
+.article-references small,
+.article-footnotes { font-size: 11.5px; }
+.article-footnotes > header small,
+.article-footnotes li > span { font-size: 10px; letter-spacing: .055em; }
+
+/* 字体选择器用真正的字形预览，不再做三枚同质徽章。 */
+.font-profile-grid > button { grid-template-columns: 48px minmax(0, 1fr) auto; min-height: 70px; }
+.font-profile-grid > button > span {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px 15px 15px 4px;
+  font-size: 27px;
+  font-weight: 500;
+  font-synthesis: none;
+}
+.font-profile-grid > button:nth-child(1) > span { font-family: var(--font-editorial); }
+.font-profile-grid > button:nth-child(2) > span { font-family: var(--font-literary); }
+.font-profile-grid > button:nth-child(3) > span { font-family: var(--font-ui); font-weight: 600; }
+.font-profile-grid b { font-size: 15.5px; font-weight: 600; letter-spacing: .012em; }
+.font-profile-grid small { margin-top: 5px; font-size: 12.5px; line-height: 1.45; }
+.font-profile-grid i { font-size: 11px; }
+
+/* Markdown 原稿是工作文本：等宽标记对齐，中文仍保留足够字面。 */
+.source-drawer textarea {
+  font-family: var(--font-source);
+  font-size: 16.5px;
+  font-weight: 400;
+  line-height: 1.92;
+  letter-spacing: .005em;
+  font-variant-ligatures: none;
+  tab-size: 2;
+}
+.source-health,
+.source-actions { font-family: var(--font-ui); }
+.source-actions .source-action { font-size: 12.5px; }
+
+/* 快速排版面板中的辅助文字不能掉回 9px。 */
+.quick-typeset-popover > header span,
+.quick-typeset-label > small { font-size: 11px; }
+.quick-style-grid > button > span:nth-child(2) b { font-size: 13px; font-weight: 600; }
+.quick-style-grid > button > span:nth-child(2) small,
+.quick-style-grid > button > em,
+.quick-palette-row > button > span { font-size: 10.5px; }
+
+@media (max-width: 840px) {
+  .font-profile-grid > button { grid-template-columns: 43px minmax(0, 1fr) auto; min-height: 66px; }
+  .font-profile-grid > button > span { width: 43px; height: 43px; font-size: 24px; }
+  .source-drawer textarea { font-size: 16px; line-height: 1.88; }
+}
