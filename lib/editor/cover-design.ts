@@ -32,6 +32,18 @@ export type CoverRecommendation = {
   reason: string;
 };
 
+export type CoverPromptProtocol = {
+  template: string;
+  styleTags: string[];
+  sceneTags: string[];
+  visualAnchor: string;
+  visualMetaphor: string;
+  shotLanguage: string;
+  hierarchy: string;
+  referencePolicy: string;
+  negativeLock: string[];
+};
+
 export const coverSignature = "钢铁私塾 唐淼";
 
 export const coverStyles: CoverStyle[] = [
@@ -128,8 +140,88 @@ export function recommendCoverStyles(title: string, markdown: string): CoverReco
   }).sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
+const protocolByCategory: Record<CoverStyleCategory, Pick<CoverPromptProtocol, "template" | "styleTags" | "shotLanguage" | "hierarchy">> = {
+  极简: {
+    template: "概念字体海报 / Editorial Typography Poster",
+    styleTags: ["编辑排版", "大字主导", "智能留白", "单一证据物"],
+    shotLanguage: "平视或轻微俯视，50—85mm 的克制透视；只保留一枚证据型局部，背景安静，不做满屏场景。",
+    hierarchy: "主标题约占视觉权重 45%，唯一主视觉约 35%，其余为空气与安全区；阅读顺序必须是标题→主视觉→署名。",
+  },
+  中国: {
+    template: "现代东方编辑封面 / Contemporary Chinese Editorial",
+    styleTags: ["水墨留白", "现代网格", "纸纤维", "克制印色"],
+    shotLanguage: "横向长卷式景深，以前景引线、中景主体、远景余韵形成三层空间；东方意象只保留一种。",
+    hierarchy: "主标题占 40%，东方主意象占 35%，留白占 25%；古意负责气韵，现代网格负责秩序。",
+  },
+  科技: {
+    template: "科学概念海报 / Precision Technology Visual",
+    styleTags: ["精密材质", "柔光棚拍", "科学可视化", "清洁网格"],
+    shotLanguage: "50—90mm 棚拍或微距视角，控制高光并保留材料细节；数据线只承担解释，不承担装饰。",
+    hierarchy: "标题与精密主体各占约 40%，辅助结构不超过 20%；先看命题，再看技术证据。",
+  },
+  实验: {
+    template: "概念字体海报 / Experimental Editorial Poster",
+    styleTags: ["概念排版", "受控解构", "视觉节奏", "高辨识留白"],
+    shotLanguage: "平面编辑视角，允许局部错位、切片或视错觉，但实验效果覆盖不超过画面 30%，标题区域绝对稳定。",
+    hierarchy: "标题占 42%，概念装置占 38%，实验纹理不超过 20%；新奇必须服从识别与事实。",
+  },
+  插画: {
+    template: "原创编辑插画海报 / Original Editorial Illustration",
+    styleTags: ["原创角色", "单一隐喻", "平面叙事", "印刷颗粒"],
+    shotLanguage: "使用一个人物或物件关系完成叙事，近景或中景，不做群像拼盘；造型语言必须原创，不模仿在世艺术家。",
+    hierarchy: "标题约 40%，叙事主体约 45%，其余为呼吸与署名；三秒内应读懂冲突，但不夸大事实。",
+  },
+  工业: {
+    template: "工业编辑摄影 / Industrial Editorial Photography",
+    styleTags: ["真实材料", "电影侧光", "制造现场", "证据细节"],
+    shotLanguage: "35—70mm 低机位或超近景，使用侧逆光刻画真实金属纹理；设备、工厂与产品必须依据参考图。",
+    hierarchy: "标题约占 38%，真实工业主体约占 47%，环境与品牌信息不超过 15%；力量来自尺度与材质，不来自特效。",
+  },
+};
+
+function selectVisualMetaphor(title: string, profile: CoverArticleProfile) {
+  const text = `${title} ${profile.signals.join(" ")}`;
+  if (/价格|成本|低价|降价|涨价|利润/.test(text)) return "一条精确的价格刻度压过材料截面：用尺度差表达利润空间被挤压，不使用金币、钞票或下跌箭头。";
+  if (/竞争|大战|打不过|守住|替代|博弈/.test(text)) return "同一材质表面出现两套尺度与加工精度的张力：用制造逻辑的差异表现竞争，不使用拳头、战火或棋盘。";
+  if (/未来|转型|还能|是否|机会|变化/.test(text)) return "唯一主体从受限暗部进入分岔亮区：表现旧路径收窄、新能力打开，不使用俗套上升箭头。";
+  if (/标准|牌号|性能|工艺|精度|公差|机理/.test(text)) return "卡尺、刻度或材料剖面只保留一种，让被测量的细节成为事实证据。";
+  if (/历史|百年|传统|演进/.test(text)) return "同一工业对象由档案纸纹平滑过渡到当代真实材质，时间只发生一次，不做年代素材拼盘。";
+  if (profile.category === "people") return "以经核验的人物肖像和一件职业物证形成安静对视，人物神态承担叙事，不制造戏剧动作。";
+  if (profile.category === "industrial") return "一枚真实材料或设备局部被精准光线切开，截面与表面共同回答标题中的判断。";
+  return "一个与文章主命题直接相关的实物形成唯一视觉锚点，借尺度、方向或留白制造问题感，不添加泛化符号。";
+}
+
+export function buildCoverProtocol(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName): CoverPromptProtocol {
+  const base = protocolByCategory[style.category];
+  const visualAnchor = companyName
+    ? `${companyName}经官方来源核验的真实产品、工厂、设备或品牌资产，只选择其中一个作为主锚点`
+    : profile.category === "people"
+      ? "经可靠来源核验的人物肖像，配一件能说明其身份的职业物证"
+      : `${profile.subject}中最能证明文章判断的一件真实对象或材料局部`;
+  const referencePolicy = companyName
+    ? `必须先取得${companyName}官方 Logo 与官方影像参考；资产无法核验时停止生成并向用户索取，禁止模型脑补。`
+    : profile.category === "people"
+      ? "真实人物必须使用可核验肖像参考；无法确认身份时改用不指向具体人物的物证，不虚构面孔。"
+      : "不使用来源不明的品牌、人物或专有产品外观；事实型对象优先依据可靠参考，概念部分只负责表达关系。";
+  return {
+    ...base,
+    sceneTags: Array.from(new Set([profile.subject, profile.tone, profile.intent, ...profile.signals])).slice(0, 6),
+    visualAnchor,
+    visualMetaphor: selectVisualMetaphor(title, profile),
+    referencePolicy,
+    negativeLock: [
+      "只交付一张完成封面，不要 moodboard、样机、设计说明、过程图、四宫格或方案板",
+      "不要乱码、伪中文、占位字、第二主标题、无关英文或正文摘要",
+      "不要素材堆砌、随机图标、无意义粒子、廉价蓝光、塑料 3D、过度光晕",
+      "不要把标题贴在现成照片上；标题必须参与构图并保持最高识别度",
+      style.avoid,
+    ],
+  };
+}
+
 export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName) {
   const resolvedTitle = title === "未命名文章" ? "" : title.trim();
+  const protocol = buildCoverProtocol(style, title, profile, companyName);
   const titleBlock = resolvedTitle
     ? [
       "【必须排印的唯一主标题】",
@@ -159,12 +251,23 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     ];
 
   return [
+    "【Prompt as Code 协议 V2｜以下是执行参数，不得作为文字画进封面】",
     "【任务】",
     "制作微信公众号横幅封面，画幅比例严格为 2.35:1（建议 2350×1000 或 900×383），高清，商业编辑级完成度。",
+    "只交付一张完成封面。不要 moodboard、样机、设计说明、过程图、四宫格、方案板或带界面的预览图。",
     ...titleBlock,
     "【内容判断】",
     `文章主题：${resolvedTitle ? `《${resolvedTitle}》` : "待补充"}。`,
     `内容画像：${profile.subject}，${profile.tone}，传播目的为${profile.intent}。`,
+    `场景标签：${protocol.sceneTags.join(" / ")}。`,
+    "【视觉协议｜先确定唯一锚点，再开始生成】",
+    `模板：${protocol.template}。`,
+    `风格标签：${protocol.styleTags.join(" / ")}。`,
+    `唯一视觉锚点：${protocol.visualAnchor}。`,
+    `唯一视觉隐喻：${protocol.visualMetaphor}`,
+    `镜头语言：${protocol.shotLanguage}`,
+    `信息层级：${protocol.hierarchy}`,
+    `参考资产规则：${protocol.referencePolicy}`,
     "【视觉执行】",
     `视觉风格：${style.promptStyle}。`,
     `构图：${style.composition}。`,
@@ -175,6 +278,21 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     "【固定署名｜必须排印】",
     `在画面右下角固定排印“${coverSignature}”。必须逐字准确、保持一行，字号明显小于主标题但在手机端仍可辨认；使用克制的中文编辑字体，不加印章、头像、二维码或多余前缀。`,
     "署名属于最终成品文字层。若生图模型不能准确生成，必须与主标题一起使用精确排版的后期合成步骤叠加；不得遗漏、改写或挪到其他位置。",
+    "【负面锁定】",
+    ...protocol.negativeLock.map((item) => `- ${item}。`),
+    "【结构参数｜仅供 Agent 解析，不得出现在画面中】",
+    JSON.stringify({
+      type: "WeChat Editorial Cover",
+      template: protocol.template,
+      subject: protocol.visualAnchor,
+      metaphor: protocol.visualMetaphor,
+      layout: { ratio: "2.35:1", hierarchy: protocol.hierarchy, composition: style.composition },
+      style: { tags: protocol.styleTags, materials: style.texture, palette: style.palette },
+      text: { title: resolvedTitle || "BLOCKED: REQUIRE_TITLE", signature: coverSignature, titleCount: 1 },
+      reference: { company: companyName, policy: protocol.referencePolicy },
+      output: { count: 1, format: "finished cover" },
+      negative: protocol.negativeLock,
+    }, null, 2),
     "【成品检查｜全部通过才可交付】",
     "- 标题已真实出现在最终图片中，并与指定标题逐字一致；没有第二标题、乱码或无意义英文。",
     `- 右下角已准确排印“${coverSignature}”，保持一行，未被图片、Logo 或安全线遮挡。`,
