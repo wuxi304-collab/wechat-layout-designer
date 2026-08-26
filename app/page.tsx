@@ -26,7 +26,7 @@ import {
   type CoverStyleCategory,
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
-import { inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
+import { findWechatFlowLayoutRisks, inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
 
 type IconName =
   | "brand" | "document" | "structure" | "style" | "assets" | "check"
@@ -835,6 +835,12 @@ export default function Home() {
       }
       exportRoot.querySelectorAll("[data-copy-exclude]").forEach((node) => node.remove());
       exportRoot.querySelectorAll("[data-copy-body],[data-copy-footer]").forEach((node) => { node.removeAttribute("data-copy-body"); node.removeAttribute("data-copy-footer"); });
+
+      const flowRisks = findWechatFlowLayoutRisks(exportRoot);
+      if (flowRisks.length) {
+        setInspector("规范");
+        return notify(`发现 ${flowRisks.length} 个固定尺寸正文块，已阻止复制以避免微信文字重叠`);
+      }
 
       const html = normalizeMarkdownInput(exportRoot.outerHTML);
       const plainText = normalizeMarkdownInput(exportRoot.innerText);
