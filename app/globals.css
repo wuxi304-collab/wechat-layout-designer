@@ -7867,28 +7867,16 @@ body { font-weight: 400; }
 .cover-brand-card.enterprise > p { border-left-color: var(--cn-red-600); background: rgba(197, 50, 56, .045); }
 .cover-brand-card > p b { color: var(--cn-navy-900); font-size: 11.5px; }
 .cover-brand-card > p span { color: var(--cn-muted); font-size: 10.5px; line-height: 1.65; }
-.cover-protocol-card { background: linear-gradient(155deg, rgba(238, 243, 247, .74), rgba(255, 255, 255, .92)); }
-.cover-harness-card { background: linear-gradient(155deg, rgba(248, 250, 252, .98), rgba(238, 243, 247, .74)); }
-.cover-harness-gates { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
-.cover-harness-gates li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 48px; padding: 9px 10px; border: 1px solid var(--cn-line); border-left-width: 3px; border-radius: 3px 10px 10px 3px; background: rgba(255,255,255,.78); }
-.cover-harness-gates li > svg { color: var(--cn-muted); }
-.cover-harness-gates li > span { display: grid; gap: 3px; min-width: 0; }
-.cover-harness-gates li b { color: var(--cn-navy-950); font-size: 11.5px; font-weight: 650; }
-.cover-harness-gates li small { overflow: hidden; color: var(--cn-muted); font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-.cover-harness-gates li > em { color: var(--cn-muted); font-family: var(--font-number); font-size: 8.5px; font-style: normal; letter-spacing: .08em; }
-.cover-harness-gates li.pass { border-left-color: #39715c; }
-.cover-harness-gates li.pass > svg, .cover-harness-gates li.pass > em { color: #39715c; }
-.cover-harness-gates li.blocked { border-left-color: var(--cn-red-600); background: rgba(197,50,56,.038); }
-.cover-harness-gates li.blocked > svg, .cover-harness-gates li.blocked > em { color: var(--cn-red-700); }
 .protocol-badge { padding: 5px 9px; border: 1px solid rgba(197, 50, 56, .25); border-radius: 999px; color: var(--cn-red-700); font-family: var(--font-number); font-size: 9px; }
-.cover-protocol-card ol { display: grid; gap: 0; margin: 17px 0 0; padding: 0; list-style: none; }
-.cover-protocol-card li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 11px 0; border-top: 1px solid rgba(20, 48, 70, .1); }
-.cover-protocol-card li > i { padding-top: 2px; color: var(--cn-red-700); font-family: var(--font-number); font-size: 9px; font-style: normal; }
-.cover-protocol-card li > span { display: grid; gap: 4px; }
-.cover-protocol-card li b { color: var(--cn-navy-950); font-size: 12px; font-weight: 600; }
-.cover-protocol-card li small { color: #607383; font-size: 10.5px; line-height: 1.62; }
-.cover-protocol-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.cover-protocol-tags span { padding: 5px 8px; border: 1px solid rgba(20, 48, 70, .13); border-radius: 999px; background: #fff; color: var(--cn-navy-700); font-size: 9.5px; }
+.cover-logo-workflow-card { background: linear-gradient(155deg, rgba(248, 250, 252, .98), rgba(238, 243, 247, .72)); }
+.cover-logo-workflow-card ol { display: grid; gap: 0; margin: 17px 0 0; padding: 0; list-style: none; counter-reset: none; }
+.cover-logo-workflow-card li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 13px 0; border-top: 1px solid rgba(20, 48, 70, .1); }
+.cover-logo-workflow-card li > i { padding-top: 2px; color: var(--cn-red-700); font-family: var(--font-number); font-size: 9px; font-style: normal; }
+.cover-logo-workflow-card li > span { display: grid; gap: 5px; }
+.cover-logo-workflow-card li b { color: var(--cn-navy-950); font-size: 12px; font-weight: 650; }
+.cover-logo-workflow-card li small { color: #607383; font-size: 10.5px; line-height: 1.62; }
+.cover-logo-workflow-card > p { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; margin: 4px 0 0; padding: 10px 11px; border-left: 2px solid var(--cn-red-600); border-radius: 2px 10px 10px 2px; background: rgba(197, 50, 56, .05); color: #6d4a48; font-size: 10.5px; line-height: 1.6; }
+.cover-logo-workflow-card > p svg { margin-top: 1px; color: var(--cn-red-700); }
 .cover-recommend-list { display: grid; gap: 9px; margin-top: 18px; }
 .cover-recommend-list > button {
   display: grid;

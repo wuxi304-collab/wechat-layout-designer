@@ -123,7 +123,7 @@ const enterpriseRecords: EnterpriseRecord[] = [
   {
     canonicalName: "中国天辰工程有限公司",
     aliases: ["中国化学天辰公司", "中国天辰", "CNCEC-TCC"],
-    officialDomains: ["china-tcc.com", "cncec.com.cn"],
+    officialDomains: ["china-tcc.com"],
   },
   ...[
     "阿法拉伐", "奥托昆普", "华生精密", "泰来华顿", "兰石重装", "上海实达", "宝武", "青拓", "太钢", "酒钢", "首钢", "浦项", "森松", "中集", "天华院", "烨贸", "查特", "VDM",
@@ -299,12 +299,12 @@ function selectVisualMetaphor(title: string, profile: CoverArticleProfile) {
 export function buildCoverProtocol(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName): CoverPromptProtocol {
   const base = protocolByCategory[style.category];
   const visualAnchor = companyName
-    ? `${companyName}经官方来源核验的真实产品、工厂、设备或品牌资产，只选择其中一个作为主锚点`
+    ? `${companyName}官网或认证公众号中的真实厂房、设备、产品影像，只选择其中一个作为主锚点`
     : profile.category === "people"
       ? "经可靠来源核验的人物肖像，配一件能说明其身份的职业物证"
       : `${profile.subject}中最能证明文章判断的一件真实对象或材料局部`;
   const referencePolicy = companyName
-    ? `必须先取得${companyName}官方 Logo 原始文件、来源 URL 与 SHA-256，并把原件作为独立图层直接合成；任一资产无法核验时停止生成并向用户索取，禁止模型脑补。`
+    ? `先从${companyName}官网或认证公众号复制当前 Logo 图片为本地素材；文件未取得就停止，取得后只把原图作为独立图层合成，禁止模型重画。`
     : profile.category === "people"
       ? "真实人物必须使用可核验肖像参考；无法确认身份时改用不指向具体人物的物证，不虚构面孔。"
       : "不使用来源不明的品牌、人物或专有产品外观；事实型对象优先依据可靠参考，概念部分只负责表达关系。";
@@ -328,53 +328,26 @@ export function buildCoverHarness(title: string, companyName: string | null) {
   const resolvedTitle = title === "未命名文章" ? "" : normalizeCoverOcrText(title);
   const companyRecord = companyName ? recordForCompany(companyName) : undefined;
   return {
-    harnessVersion: "3.0",
-    deliveryPolicy: "ALL_GATES_MUST_PASS",
-    pipeline: [
-      "LOCK_INPUTS",
-      "RESOLVE_ENTITY",
-      "ACQUIRE_OFFICIAL_ASSETS",
-      "GENERATE_TEXT_FREE_BACKGROUND",
-      "COMPOSITE_EXACT_TEXT_AND_LOGO",
-      "VERIFY_OCR_AND_ASSET_FINGERPRINT",
-      "DELIVER_ONE_FINISHED_COVER",
-    ],
-    inputLock: {
-      title: resolvedTitle || "BLOCKED: REQUIRE_TITLE",
-      authorName: coverAuthorName,
-      signature: coverSignature,
-      allowedTextOutsideLogo: resolvedTitle ? [resolvedTitle, coverSignature] : [coverSignature],
-      unicodeNormalization: "NFC_ONLY",
-    },
-    entityGate: {
+    workflowVersion: "4.0",
+    rule: "LOGO_FILE_FIRST",
+    company: {
       company: companyName,
       officialDomainHints: companyRecord?.officialDomains ?? [],
-      passWhen: companyName ? "canonical_name_confirmed" : "not_an_enterprise_article",
-      failureAction: "BLOCK_DELIVERY",
     },
-    brandAssetGate: {
-      required: Boolean(companyName),
-      status: companyName ? "BLOCKED_UNTIL_VERIFIED_ASSET" : "NOT_APPLICABLE",
-      passWhen: "official_logo_file_attached && source_url_verified && sha256_recorded",
-      allowedOperation: "PLACE_ORIGINAL_ASSET_ONLY",
-      forbiddenOperations: ["GENERATE", "REDRAW", "TRACE", "RESTYLE", "RECOLOR"],
-      failureAction: "BLOCK_DELIVERY_AND_REQUEST_LOGO",
-    },
-    compositionGate: {
-      background: "generated_without_text_or_logo",
-      typography: "deterministic_typesetting_layer",
-      logo: companyName ? "original_asset_composite_layer" : "none",
-      repairPolicy: "RENDER_LAYER_AGAIN; NEVER_ASK_IMAGE_MODEL_TO_REWRITE_TEXT_OR_LOGO",
-    },
-    acceptance: {
-      ratio: "2.35:1",
-      ocrMode: "MASK_LOGO_BBOX_THEN_OCR",
-      ocrExactMatch: true,
-      extraTextCount: 0,
-      signatureExact: coverSignature,
-      logoFingerprintMatch: Boolean(companyName),
-      maxRepairAttempts: 2,
-      onFailure: "REJECT_OUTPUT",
+    steps: companyName ? [
+      "在企业官网查找并复制 Logo 图片；官网无可用图片时，再到认证微信公众号取 Logo",
+      "确认 Logo 已保存为真实图片文件并作为参考素材加入任务；没有文件就停止并请用户上传",
+      "生成无字底图，再原样放置 Logo 文件，并排印锁定标题与署名",
+    ] : [
+      "生成无字、无第三方 Logo 的封面底图",
+      "排印锁定标题与署名",
+      "检查尺寸与文字后交付一张成品",
+    ],
+    continueOnlyWhen: companyName ? "OFFICIAL_LOGO_IMAGE_FILE_EXISTS" : "TITLE_EXISTS",
+    stopWhen: companyName ? "OFFICIAL_LOGO_IMAGE_FILE_MISSING" : "TITLE_MISSING",
+    lockedText: {
+      title: resolvedTitle || "缺少标题",
+      signature: coverSignature,
     },
   };
 }
@@ -382,103 +355,44 @@ export function buildCoverHarness(title: string, companyName: string | null) {
 export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName) {
   const resolvedTitle = title === "未命名文章" ? "" : title.trim();
   const protocol = buildCoverProtocol(style, title, profile, companyName);
-  const harness = buildCoverHarness(title, companyName);
   const officialDomains = companyName ? recordForCompany(companyName)?.officialDomains ?? profile.officialDomains : [];
-  const titleBlock = resolvedTitle
-    ? [
-      "【必须排印的唯一主标题】",
-      `“${resolvedTitle}”`,
-      "最终成品必须含有上述标题。逐字照录，一字不漏、一字不改，不增删标点，不调换语序，不使用近义词，不截断；全图只出现这一处主标题。",
-      "采用清晰的中文编辑字体，标题是第一视觉层级；在缩略图尺寸下仍可辨认。断行只能服从语义，不把词组、数字与单位拆开。",
-      "禁止让图像生成模型绘制标题。必须先生成无字底图，再用确定性排版工具把标题作为独立文字层合成；这不是备用方案，而是唯一允许的生产方式。",
-      "标题合成后必须执行 OCR；按 NFC 规范化并合并空白后，识别结果必须与锁定标题完全相等。任一汉字、标点或顺序不同，立即拒绝该成品。",
-    ]
-    : [
-      "【阻断条件：缺少标题】",
-      "当前没有可用标题。停止生成，先向用户索取最终标题；不得自拟标题，也不得交付无标题封面。",
-    ];
-  const brandBlock = companyName
-    ? [
-      "【企业品牌核验｜必须先完成，未通过不得生成】",
-      `企业主体：${companyName}。`,
-      ...(officialDomains.length ? [`官方域名线索：${officialDomains.join("、")}。域名只用于缩小检索范围，仍须在执行时确认页面归属与资产版本。`] : []),
-      "1. 生成前先联网核验企业主体，并查找该企业当前使用的官方 Logo。优先来源：企业官网品牌页/媒体资料包、认证公众号或认证官方账号、交易所公告与公司正式披露文件。",
-      "2. 至少用两条权威信号核对企业名称、Logo 图形、标准色与当前版本；搜索结果页、百科、自媒体和素材下载站不能作为唯一依据。",
-      "3. 下载核验通过的官方 Logo 原始文件，记录来源 URL、下载时间与 SHA-256；Logo 必须作为独立资产层直接合成，绝不交给生图模型绘制，也不接受模型生成的近似图形。",
-      "4. 保持官方 Logo 的比例、颜色、字形与安全留白；不得重绘、变形、换色、描边、立体化、艺术化，也不得生成所谓‘相似 Logo’。",
-      "5. 若找不到可验证的官方 Logo，或不同来源互相冲突：立即停止并请用户上传官方 Logo 文件。绝不猜测、杜撰或仿制。",
-      "6. 交付前对成品 Logo 区域与原始资产做指纹/像素一致性检查；封面只放一次 Logo，优先置于右上安全区，不得压过文章标题，也不得占用右下角固定署名区。",
-    ]
-    : [
-      "【品牌资产】",
-      "未识别到企业主体：不植入任何第三方 Logo，也不凭空生成品牌标志。若文章实际写某家企业，先补充企业主体并完成官方 Logo 核验。",
-    ];
+  const brandSteps = companyName ? [
+    "【先拿 Logo，再做封面】",
+    `企业：${companyName}`,
+    ...(officialDomains.length ? [`官网线索：${officialDomains.join("、")}`] : []),
+    `1. 先打开${companyName}的官方网站，找到当前页面正在使用的 Logo 图片，复制或下载为 PNG、SVG、WebP、JPG 文件。官网没有可用图片时，再从该企业认证微信公众号的头像、菜单页或官方文章页取得 Logo 图片。`,
+    "2. 把取得的 Logo 图片文件作为本任务的原始参考素材。必须先确认本地或附件中真实存在这个文件，才可以调用生图工具；仅有企业名称、网页链接或文字描述，都不算拿到 Logo。",
+    "3. 找不到可复制的官方 Logo 图片时立即停止，请用户上传。不得用搜索结果缩略图、素材站图片，不得让模型猜、画、描摹或仿制 Logo。",
+    "4. 生成封面底图后，把 Logo 原图作为独立图层原样放在右上安全区。只允许等比缩放和裁去透明空边，不换色、不变形、不加描边、不重绘。",
+    "5. 交付时附一行 Logo 来源网址，便于用户复核。",
+  ] : [
+    "【Logo 规则】",
+    "文章未识别到企业主体，不添加任何企业 Logo；不得凭空创造品牌标志。",
+  ];
 
   return [
-    "【Prompt as Code 协议 V3 + Verification Harness｜以下是执行参数，不得作为文字画进封面】",
+    "【微信公众号封面制作指令｜Logo First V4】",
+    "你是负责查找素材、生成底图和完成排版的制作 Agent。顺序只有一个：先取得真实 Logo 文件，再生成封面。不要跳步。",
     "【任务】",
     "制作微信公众号横幅封面，画幅比例严格为 2.35:1（建议 2350×1000 或 900×383），高清，商业编辑级完成度。",
     "只交付一张完成封面。不要 moodboard、样机、设计说明、过程图、四宫格、方案板或带界面的预览图。",
-    "【生产方式｜强制分层，不得跳步】",
-    "1. 锁定标题、作者名、署名和企业正式名称；禁止后续步骤改写。",
-    "2. 企业稿先取得官方 Logo 原始文件及证据包；未通过品牌资产闸门时，状态必须为 BLOCKED，不得开始成品生成。",
-    "3. 图像模型只生成无文字、无 Logo 的背景层，并为标题、Logo、署名预留安全区。",
-    "4. 使用 Canvas、SVG、Sharp、ImageMagick、设计软件或等效确定性工具，分别合成标题层、官方 Logo 原件层和署名层。",
-    "5. 对合成成品执行 OCR、额外文字扫描、Logo 指纹核对和尺寸检查；全部通过才允许交付。",
-    ...titleBlock,
-    "【内容判断】",
-    `文章主题：${resolvedTitle ? `《${resolvedTitle}》` : "待补充"}。`,
-    `内容画像：${profile.subject}，${profile.tone}，传播目的为${profile.intent}。`,
-    `场景标签：${protocol.sceneTags.join(" / ")}。`,
-    "【视觉协议｜先确定唯一锚点，再开始生成】",
-    `模板：${protocol.template}。`,
-    `风格标签：${protocol.styleTags.join(" / ")}。`,
-    `唯一视觉锚点：${protocol.visualAnchor}。`,
-    `唯一视觉隐喻：${protocol.visualMetaphor}`,
-    `镜头语言：${protocol.shotLanguage}`,
-    `信息层级：${protocol.hierarchy}`,
-    `参考资产规则：${protocol.referencePolicy}`,
-    "【视觉执行】",
-    `视觉风格：${style.promptStyle}。`,
+    ...brandSteps,
+    "【锁定文字】",
+    resolvedTitle ? `主标题：“${resolvedTitle}”` : "缺少主标题：停止制作并向用户索取，不得自拟。",
+    `右下角固定署名：“${coverSignature}”`,
+    "主标题和署名必须使用 Canvas、SVG、Sharp、ImageMagick或设计软件精确排印，不让图像模型书写。逐字核对；“唐淼”不得写成“唐森”或任何形近字。",
+    "【画面设计】",
+    `内容画像：${profile.subject} / ${profile.tone} / ${profile.intent}。`,
+    `风格：${protocol.template}；${style.promptStyle}。`,
+    `画面主体：${protocol.visualAnchor}。`,
+    `表达方式：${protocol.visualMetaphor}`,
     `构图：${style.composition}。`,
     `材质与光线：${style.texture}。`,
     `主色：${style.palette.join("、")}，整体最多三种主色。`,
-    `必须避免：${style.avoid}。`,
-    ...brandBlock,
-    "【固定署名｜必须排印】",
-    `在画面右下角固定排印“${coverSignature}”。必须逐字准确、保持一行，字号明显小于主标题但在手机端仍可辨认；使用克制的中文编辑字体，不加印章、头像、二维码或多余前缀。`,
-    `作者名锁定为“${coverAuthorName}”，不得替换为唐森、唐焱、唐深或任何形近字。署名必须与主标题一样由确定性排版工具合成，禁止图像生成模型书写。`,
-    `OCR 验收必须完整得到“${coverSignature}”；识别为“钢铁私塾 唐森”或其他任何变体时，状态为 TEXT_MISMATCH，拒绝交付并重新渲染文字层。`,
-    "【负面锁定】",
-    ...protocol.negativeLock.map((item) => `- ${item}。`),
-    "【Verification Harness｜机器执行，不得出现在画面中】",
-    JSON.stringify(harness, null, 2),
-    "【结构参数｜仅供 Agent 解析，不得出现在画面中】",
-    JSON.stringify({
-      type: "WeChat Editorial Cover",
-      protocolVersion: "3.0",
-      productionMode: "TEXT_FREE_BACKGROUND_THEN_DETERMINISTIC_COMPOSITE",
-      template: protocol.template,
-      subject: protocol.visualAnchor,
-      metaphor: protocol.visualMetaphor,
-      layout: { ratio: "2.35:1", hierarchy: protocol.hierarchy, composition: style.composition },
-      style: { tags: protocol.styleTags, materials: style.texture, palette: style.palette },
-      text: { title: resolvedTitle || "BLOCKED: REQUIRE_TITLE", authorName: coverAuthorName, signature: coverSignature, titleCount: 1, exactMatch: true },
-      reference: { company: companyName, officialDomains, policy: protocol.referencePolicy, logoMode: companyName ? "ORIGINAL_ASSET_ONLY" : "NONE" },
-      output: { count: 1, format: "finished cover" },
-      negative: protocol.negativeLock,
-    }, null, 2),
-    "【失败即阻断｜不得带病交付】",
-    "- ENTITY_UNRESOLVED：企业正式名称无法确认，停止并请求用户确认。",
-    "- LOGO_ASSET_MISSING：没有官方 Logo 原始文件、来源 URL 或 SHA-256，停止并请求用户上传。",
-    "- TEXT_MISMATCH：OCR 未逐字命中标题或“钢铁私塾 唐淼”，只重绘文字层，不让图像模型重写。",
-    "- EXTRA_TEXT：除标题和署名外检测到额外文字（Logo 边界框内文字除外），拒绝成品。",
-    "- LOGO_FINGERPRINT_MISMATCH：成品 Logo 与官方资产不一致，重新放置原件，禁止修画。",
-    "【成品检查｜全部通过才可交付】",
-    "- 屏蔽 Logo 边界框后执行 OCR：只识别到锁定标题与锁定署名，标题逐字一致且没有第二标题、乱码或无意义英文。",
-    `- 右下角已准确排印“${coverSignature}”，保持一行，未被图片、Logo 或安全线遮挡。`,
-    "- 主体事实准确，画面克制，无廉价模板感、伪 3D 塑料感和多余装饰。",
-    companyName ? "- 官方 Logo 以原始资产层直接合成；来源 URL、SHA-256、Logo 边界框和指纹比对结果均已记录。" : "- 未擅自添加任何企业或机构 Logo。",
-    "- 画幅为 2.35:1，标题与关键主体均处于安全区；企业稿的 Logo 也必须在安全区，移动端缩略图可读。",
+    "【交付前只检查四件事】",
+    companyName ? `1. Logo 来自${companyName}官网或认证公众号取得的真实图片文件，且成品中未被重画、变形或改色。` : "1. 画面没有擅自添加企业 Logo。",
+    resolvedTitle ? `2. 标题逐字等于“${resolvedTitle}”。` : "2. 主标题已补齐。",
+    `3. 右下角逐字等于“${coverSignature}”，其中姓名是“唐淼”。`,
+    "4. 画幅为 2.35:1，只交付一张成品，没有乱码、无关文字、样机或设计说明。",
   ].join("\n");
 }

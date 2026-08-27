@@ -3,39 +3,36 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   analyzeCoverContent,
+  buildCoverHarness,
   buildCoverPrompt,
   coverStyles,
   detectCompanyName,
   validateCoverTextManifest,
 } from "../lib/editor/cover-design.ts";
 
-test("cover prompt requires exact title and verified official logo", async () => {
+test("cover prompt uses the short logo-first workflow", async () => {
   const source = await readFile(new URL("../lib/editor/cover-design.ts", import.meta.url), "utf8");
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /最终成品必须含有上述标题/);
-  assert.match(source, /逐字照录，一字不漏、一字不改/);
-  assert.match(source, /官方 Logo/);
-  assert.match(source, /绝不猜测、杜撰或仿制/);
-  assert.match(source, /来源 URL/);
-  assert.match(source, /钢铁私塾 唐淼/);
-  assert.match(source, /右下角已准确排印/);
-  assert.match(source, /Prompt as Code 协议 V3 \+ Verification Harness/);
+  assert.match(source, /Logo First V4/);
+  assert.match(source, /先取得真实 Logo 文件，再生成封面/);
+  assert.match(source, /官方网站/);
+  assert.match(source, /认证微信公众号/);
+  assert.match(source, /作为本任务的原始参考素材/);
+  assert.match(source, /真实存在这个文件，才可以调用生图工具/);
+  assert.match(source, /不得让模型猜、画、描摹或仿制 Logo/);
+  assert.match(source, /把 Logo 原图作为独立图层原样放在右上安全区/);
+  assert.match(source, /coverAuthorName = "唐淼"/);
   assert.match(source, /只交付一张完成封面/);
-  assert.match(source, /唯一视觉隐喻/);
-  assert.match(source, /镜头语言/);
   assert.match(source, /moodboard/);
   assert.match(source, /buildCoverProtocol/);
-  assert.match(source, /deterministic_typesetting_layer/);
-  assert.match(source, /sha256_recorded/);
-  assert.match(source, /MASK_LOGO_BBOX_THEN_OCR/);
-  assert.match(source, /TEXT_MISMATCH/);
-  assert.match(page, /Prompt as Code V3/);
-  assert.match(page, /交付闸门 Harness V3/);
-  assert.match(page, /复制生产协议 V3/);
-  assert.doesNotMatch(source, /图片本身不生成标题文字/);
-  assert.doesNotMatch(source, /若生图模型不能保证中文准确/);
-  assert.doesNotMatch(page, /cover-toolbar-copy/);
+  assert.match(page, /先拿 Logo，再做封面/);
+  assert.match(page, /找到原图，才开始生成/);
+  assert.match(page, /复制封面制作指令/);
+  assert.doesNotMatch(source, /Prompt as Code 协议 V3/);
+  assert.doesNotMatch(source, /SHA-256/);
+  assert.doesNotMatch(source, /Verification Harness/);
+  assert.doesNotMatch(page, /4 GATES/);
 });
 
 test("title entity wins over descriptive prose and resolves to the canonical company", () => {
@@ -51,12 +48,25 @@ test("China Tianchen prompt blocks generated logos and locks the exact author na
   const style = coverStyles.find((item) => item.id === "hyperreal");
   assert.ok(style);
   const prompt = buildCoverPrompt(style, title, profile);
-  assert.match(prompt, /企业主体：中国天辰工程有限公司/);
+  assert.match(prompt, /企业：中国天辰工程有限公司/);
   assert.match(prompt, /china-tcc\.com/);
-  assert.match(prompt, /Logo 必须作为独立资产层直接合成/);
-  assert.match(prompt, /作者名锁定为“唐淼”/);
-  assert.match(prompt, /钢铁私塾 唐森.*TEXT_MISMATCH/);
+  assert.match(prompt, /先打开中国天辰工程有限公司的官方网站/);
+  assert.match(prompt, /官网没有可用图片时，再从该企业认证微信公众号/);
+  assert.match(prompt, /真实存在这个文件，才可以调用生图工具/);
+  assert.match(prompt, /右下角固定署名：“钢铁私塾 唐淼”/);
+  assert.match(prompt, /“唐淼”不得写成“唐森”/);
   assert.doesNotMatch(prompt, /企业主体：是把它理解成一家大型化工设计院/);
+});
+
+test("V4 harness has only the three asset-first steps", () => {
+  const harness = buildCoverHarness("中国天辰：项目用钢如何确定", "中国天辰工程有限公司");
+  assert.equal(harness.workflowVersion, "4.0");
+  assert.equal(harness.rule, "LOGO_FILE_FIRST");
+  assert.equal(harness.steps.length, 3);
+  assert.equal(harness.continueOnlyWhen, "OFFICIAL_LOGO_IMAGE_FILE_EXISTS");
+  assert.match(harness.steps[0], /官网/);
+  assert.match(harness.steps[0], /认证微信公众号/);
+  assert.match(harness.steps[1], /真实图片文件/);
 });
 
 test("OCR harness rejects 唐森 and accepts only 唐淼", () => {
