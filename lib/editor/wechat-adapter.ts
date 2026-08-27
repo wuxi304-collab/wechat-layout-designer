@@ -2,8 +2,10 @@ import {
   WECHAT_FIXED_DIMENSION_PROPERTIES,
   WECHAT_FLOW_STYLE_PROPERTIES,
   isWechatFlowTag,
+  normalizeWechatInlineFontSize,
   normalizeWechatLineHeight,
   shouldCopyWechatStyle,
+  shouldInheritWechatProseMetrics,
 } from "@/lib/editor/wechat-flow-policy";
 
 export const WECHAT_SAFE_STYLE_PROPERTIES = [
@@ -14,6 +16,29 @@ export const WECHAT_SAFE_STYLE_PROPERTIES = [
 const INTERNAL_ATTRIBUTES = ["class", "id", "tabindex", "role", "data-md-style", "data-block-index"];
 
 const FIXED_LENGTH = /^-?\d*\.?\d+(?:px|pt|pc|cm|mm|in)$/i;
+const PROSE_CONTAINER_SELECTOR = "p,figcaption";
+const PROSE_INLINE_SELECTOR = ":is(p,figcaption) :is(strong,b,em,i,s,del,a,span,sup,sub,code)";
+const TIMELINE_TEXT_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th";
+
+export function applyWechatTimelineTextSafety(root: HTMLElement) {
+  [root, ...Array.from(root.querySelectorAll<HTMLElement>(TIMELINE_TEXT_BLOCK_SELECTOR))].forEach((node) => {
+    node.style.setProperty("-webkit-text-size-adjust", "100%");
+    node.style.setProperty("text-size-adjust", "100%");
+  });
+
+  root.querySelectorAll<HTMLElement>(PROSE_INLINE_SELECTOR).forEach((node) => {
+    if (FIXED_LENGTH.test(node.style.getPropertyValue("font-size").trim())) node.style.removeProperty("font-size");
+    node.style.setProperty("display", "inline");
+    node.style.setProperty("line-height", "inherit");
+    node.style.setProperty("white-space", "normal");
+    node.style.removeProperty("width");
+    node.style.removeProperty("max-width");
+    node.style.removeProperty("height");
+    node.style.removeProperty("min-height");
+    node.style.removeProperty("max-height");
+  });
+  return root;
+}
 
 export function findWechatFlowLayoutRisks(root: HTMLElement) {
   return [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))].filter((node) => {
@@ -25,6 +50,20 @@ export function findWechatFlowLayoutRisks(root: HTMLElement) {
     return [height, minHeight, maxHeight].some((value) => FIXED_LENGTH.test(value.trim()))
       || (node.tagName !== "TABLE" && FIXED_LENGTH.test(width.trim()));
   });
+}
+
+export function findWechatTimelineTextRisks(root: HTMLElement) {
+  const risks: HTMLElement[] = [];
+  const textAdjust = root.style.getPropertyValue("text-size-adjust") || root.style.getPropertyValue("-webkit-text-size-adjust");
+  if (textAdjust !== "100%") risks.push(root);
+  root.querySelectorAll<HTMLElement>(PROSE_INLINE_SELECTOR).forEach((node) => {
+    const fontSize = node.style.getPropertyValue("font-size").trim();
+    const lineHeight = node.style.getPropertyValue("line-height").trim();
+    const display = node.style.getPropertyValue("display").trim();
+    const whiteSpace = node.style.getPropertyValue("white-space").trim();
+    if (FIXED_LENGTH.test(fontSize) || FIXED_LENGTH.test(lineHeight) || display === "inline-block" || whiteSpace === "nowrap") risks.push(node);
+  });
+  return risks;
 }
 
 export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) {
@@ -39,6 +78,8 @@ export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) 
     const computed = window.getComputedStyle(node);
     const isEditorWrapper = node.classList.contains("selectable-block");
     const hasText = Boolean(node.textContent?.trim());
+    const insideProse = Boolean(node.parentElement?.closest(PROSE_CONTAINER_SELECTOR));
+    const inheritProseMetrics = shouldInheritWechatProseMetrics({ tagName: node.tagName, insideProse });
     WECHAT_SAFE_STYLE_PROPERTIES.forEach((property) => {
       if (!shouldCopyWechatStyle({ tagName: node.tagName, property, hasText, isEditorWrapper })) return;
       const value = computed.getPropertyValue(property);
@@ -48,6 +89,20 @@ export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) 
         property === "line-height" ? normalizeWechatLineHeight(value, computed.fontSize) : value,
       );
     });
+    if (inheritProseMetrics) {
+      const parentFontSize = node.parentElement ? window.getComputedStyle(node.parentElement).fontSize : computed.fontSize;
+      const relativeFontSize = normalizeWechatInlineFontSize(computed.fontSize, parentFontSize);
+      if (relativeFontSize === "inherit") target.style.removeProperty("font-size");
+      else target.style.setProperty("font-size", relativeFontSize);
+      target.style.setProperty("display", "inline");
+      target.style.setProperty("line-height", "inherit");
+      target.style.setProperty("white-space", "normal");
+      target.style.removeProperty("width");
+      target.style.removeProperty("max-width");
+      target.style.removeProperty("height");
+      target.style.removeProperty("font-family");
+      target.style.removeProperty("letter-spacing");
+    }
     if (isEditorWrapper) target.setAttribute("data-wechat-flow-wrapper", "true");
     INTERNAL_ATTRIBUTES.forEach((attribute) => target.removeAttribute(attribute));
   });
@@ -84,6 +139,7 @@ export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) 
     node.style.removeProperty("min-height");
     node.style.removeProperty("max-height");
   });
+  applyWechatTimelineTextSafety(clone);
   return clone;
 }
 

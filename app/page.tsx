@@ -26,7 +26,7 @@ import {
   type CoverStyleCategory,
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
-import { findWechatFlowLayoutRisks, inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
+import { applyWechatTimelineTextSafety, findWechatFlowLayoutRisks, findWechatTimelineTextRisks, inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
 
 type IconName =
   | "brand" | "document" | "structure" | "style" | "assets" | "check"
@@ -820,13 +820,13 @@ export default function Home() {
 
       const exportRoot = document.createElement("section");
       exportRoot.lang = "zh-CN";
-      exportRoot.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.palette.ink};background:#ffffff;box-sizing:border-box;font-family:${wechatFontStacks[fontProfile]};font-size:${fontSize}px;line-height:${lineHeight};word-break:normal;overflow-wrap:anywhere;`;
+      exportRoot.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.palette.ink};background:#ffffff;box-sizing:border-box;font-family:${wechatFontStacks[fontProfile]};font-size:${fontSize}px;line-height:${lineHeight};word-break:normal;overflow-wrap:anywhere;-webkit-text-size-adjust:100%;text-size-adjust:100%;`;
       const byline = document.createElement("p");
       byline.textContent = `主编：${article.author}`;
       byline.style.cssText = `margin:0 0 30px;padding:0 0 14px;border:0;border-bottom:1px solid ${currentTheme.palette.accent}33;color:${currentTheme.palette.accent};font-family:${wechatUiFontStack};font-size:14px;font-weight:600;line-height:1.7;letter-spacing:.01em;text-align:left;`;
       exportRoot.appendChild(byline);
 
-      body.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.palette.ink};background:#ffffff;box-sizing:border-box;font-family:${wechatFontStacks[fontProfile]};font-size:${fontSize}px;line-height:${lineHeight};word-break:normal;overflow-wrap:anywhere;`;
+      body.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.palette.ink};background:#ffffff;box-sizing:border-box;font-family:${wechatFontStacks[fontProfile]};font-size:${fontSize}px;line-height:${lineHeight};word-break:normal;overflow-wrap:anywhere;-webkit-text-size-adjust:100%;text-size-adjust:100%;`;
       body.removeAttribute("data-copy-body");
       exportRoot.appendChild(body);
       if (footer) {
@@ -835,17 +835,23 @@ export default function Home() {
       }
       exportRoot.querySelectorAll("[data-copy-exclude]").forEach((node) => node.remove());
       exportRoot.querySelectorAll("[data-copy-body],[data-copy-footer]").forEach((node) => { node.removeAttribute("data-copy-body"); node.removeAttribute("data-copy-footer"); });
+      applyWechatTimelineTextSafety(exportRoot);
 
       const flowRisks = findWechatFlowLayoutRisks(exportRoot);
       if (flowRisks.length) {
         setInspector("规范");
         return notify(`发现 ${flowRisks.length} 个固定尺寸正文块，已阻止复制以避免微信文字重叠`);
       }
+      const timelineTextRisks = findWechatTimelineTextRisks(exportRoot);
+      if (timelineTextRisks.length) {
+        setInspector("规范");
+        return notify(`发现 ${timelineTextRisks.length} 个朋友圈字体缩放风险，已阻止复制`);
+      }
 
       const html = normalizeMarkdownInput(exportRoot.outerHTML);
       const plainText = normalizeMarkdownInput(exportRoot.innerText);
       await writeRichClipboard(html, plainText);
-      notify("微信正文已复制，不含重复标题与预览页眉");
+      notify("微信正文已复制，已启用公众号与朋友圈双入口稳排");
     } catch { notify("浏览器未允许复制，请重试"); }
   }
 
