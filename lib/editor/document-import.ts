@@ -1,14 +1,20 @@
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 
-const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
-const MAX_PDF_PAGES = 100;
+const MAX_WORD_BYTES = 25 * 1024 * 1024;
+const MAX_PDF_BYTES = 50 * 1024 * 1024;
+const MAX_PDF_PAGES = 500;
 
 export type ImportedDocument = {
   markdown: string;
   sourceLabel: string;
   summary: string;
   warnings: string[];
+};
+
+export type DocumentImportProgress = {
+  currentPage: number;
+  totalPages: number;
 };
 
 export type PdfTextRun = {
@@ -208,7 +214,7 @@ async function importWord(arrayBuffer: ArrayBuffer): Promise<ImportedDocument> {
   };
 }
 
-async function importPdf(arrayBuffer: ArrayBuffer): Promise<ImportedDocument> {
+async function importPdf(arrayBuffer: ArrayBuffer, onProgress?: (progress: DocumentImportProgress) => void): Promise<ImportedDocument> {
   const [pdfjs, workerAsset] = await Promise.all([
     import("pdfjs-dist"),
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
@@ -234,6 +240,7 @@ async function importPdf(arrayBuffer: ArrayBuffer): Promise<ImportedDocument> {
       });
       pages.push(groupPdfRunsIntoLines(runs));
       page.cleanup();
+      onProgress?.({ currentPage: pageNumber, totalPages: processedPages });
     }
     const cleanedPages = removeRepeatedPdfMargins(pages);
     const markdown = cleanMarkdown(cleanedPages.map((lines, index) => pdfLinesToMarkdown(lines, index === 0)).filter(Boolean).join("\n\n"));
@@ -262,11 +269,16 @@ async function importPdf(arrayBuffer: ArrayBuffer): Promise<ImportedDocument> {
   }
 }
 
-export async function importDocumentFile(file: File): Promise<ImportedDocument> {
+export async function importDocumentFile(file: File, onProgress?: (progress: DocumentImportProgress) => void): Promise<ImportedDocument> {
   const extension = extensionOf(file.name);
-  if (file.size > MAX_DOCUMENT_BYTES) throw new DocumentImportError("文件超过 25MB，请压缩或拆分后再导入");
   if (extension === ".doc") throw new DocumentImportError("旧版 .doc 暂不支持，请在 Word 中另存为 .docx");
-  if (extension === ".docx") return importWord(await file.arrayBuffer());
-  if (extension === ".pdf") return importPdf(await file.arrayBuffer());
+  if (extension === ".docx") {
+    if (file.size > MAX_WORD_BYTES) throw new DocumentImportError("Word 文件超过 25MB，请压缩图片后再导入");
+    return importWord(await file.arrayBuffer());
+  }
+  if (extension === ".pdf") {
+    if (file.size > MAX_PDF_BYTES) throw new DocumentImportError("PDF 超过 50MB，请压缩或拆分后再导入");
+    return importPdf(await file.arrayBuffer(), onProgress);
+  }
   throw new DocumentImportError("请选择 Markdown、TXT、Word（.docx）或 PDF 文件");
 }

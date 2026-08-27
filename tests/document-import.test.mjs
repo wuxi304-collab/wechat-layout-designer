@@ -64,7 +64,11 @@ test("文件入口包含 Word、PDF、本机解析与扫描件保护", async () 
   assert.match(source, /pdfjs-dist/);
   assert.match(source, /可能是扫描件；请先 OCR/);
   assert.match(source, /旧版 \.doc 暂不支持/);
+  assert.match(source, /MAX_PDF_BYTES = 50 \* 1024 \* 1024/);
+  assert.match(source, /MAX_PDF_PAGES = 500/);
   assert.match(page, /\.docx,\.pdf/);
+  assert.match(page, /PDF≤500页 · ≤50MB/);
+  assert.match(page, /PDF \$\{currentPage\}\/\$\{totalPages\} 页/);
   assert.match(page, /文件仅在本机解析/);
   assert.match(page, /导入 .* 前/);
 });
