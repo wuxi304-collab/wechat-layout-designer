@@ -7942,3 +7942,267 @@ body { font-weight: 400; }
   .cover-workbench-foot { align-items: stretch; flex-direction: column; }
   .cover-workbench-foot button { width: 100%; }
 }
+
+/* V3.8 · 封面视觉语言索引：由“标签货架”升级为可辨认的编辑样本册。 */
+.cover-library {
+  margin-top: 6px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(19, 53, 80, .13);
+}
+.cover-library-heading .style-count {
+  min-width: 35px;
+  padding: 5px 7px;
+  border: 1px solid rgba(197, 50, 56, .18);
+  border-radius: 999px;
+  background: rgba(197, 50, 56, .045);
+  color: var(--cn-red-700);
+  text-align: center;
+}
+.cover-category-filter {
+  display: flex;
+  gap: 7px;
+  margin: 19px -2px 15px;
+  padding: 2px 2px 7px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.cover-category-filter::-webkit-scrollbar { display: none; }
+.cover-category-filter button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: 66px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(20, 48, 70, .13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .66);
+  color: #657988;
+  font-size: 10.5px;
+  scroll-snap-align: start;
+  transition: color .22s ease, border-color .22s ease, background-color .22s ease, transform .3s var(--soft-ease);
+}
+.cover-category-filter button:hover { transform: translateY(-1px); border-color: rgba(20, 48, 70, .25); color: var(--cn-navy-900); }
+.cover-category-filter button em {
+  color: #9aa8b2;
+  font-family: var(--font-number);
+  font-size: 8px;
+  font-style: normal;
+}
+.cover-category-filter button.active {
+  border-color: var(--cn-navy-900);
+  background: var(--cn-navy-900);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: none;
+}
+.cover-category-filter button.active em { color: rgba(255,255,255,.58); }
+
+.cover-style-library {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.cover-style-library > button {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 120px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(20, 48, 70, .14);
+  border-radius: 3px 15px 15px 3px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--cn-text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255,255,255,.84) inset;
+  transition: transform .36s var(--soft-ease), border-color .24s ease, box-shadow .36s var(--soft-ease), background-color .24s ease;
+}
+.cover-style-library > button::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 2px;
+  background: var(--cn-red-600);
+  opacity: 0;
+  transform: scaleY(.3);
+  transition: opacity .22s ease, transform .34s var(--soft-ease);
+}
+.cover-style-library > button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(43, 77, 101, .26);
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(21, 49, 69, .08);
+}
+.cover-style-library > button.active {
+  border-color: rgba(25, 61, 87, .38);
+  background: linear-gradient(155deg, #fff, #f2f6f8);
+  box-shadow: 0 12px 28px rgba(19, 48, 69, .1), inset 0 0 0 1px rgba(255,255,255,.72);
+}
+.cover-style-library > button.active::after { opacity: 1; transform: scaleY(1); }
+
+.cover-style-specimen {
+  --specimen-paper: #f8f6ef;
+  --specimen-ink: #102a43;
+  --specimen-accent: #c8323a;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 54px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(16, 42, 67, .11);
+  background:
+    linear-gradient(112deg, color-mix(in srgb, var(--specimen-paper) 92%, white) 0 58%, color-mix(in srgb, var(--specimen-ink) 90%, black) 58% 100%);
+  isolation: isolate;
+}
+.cover-style-specimen::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 9px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--specimen-paper) 48%, transparent);
+  border-radius: 50%;
+  opacity: .65;
+}
+.cover-style-specimen::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 52%;
+  width: 7px;
+  height: 100%;
+  background: var(--specimen-accent);
+  transform: skewX(-16deg);
+  opacity: .9;
+}
+.cover-style-specimen > i {
+  position: absolute;
+  z-index: 2;
+  inset: 7px 46% 7px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--specimen-ink) 31%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--specimen-ink) 18%, transparent);
+  background: repeating-linear-gradient(90deg, transparent 0 12px, color-mix(in srgb, var(--specimen-ink) 13%, transparent) 12px 13px);
+}
+.cover-style-specimen > b {
+  position: absolute;
+  z-index: 3;
+  top: 17px;
+  left: 15px;
+  width: 31px;
+  height: 5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--specimen-ink);
+  box-shadow: 0 9px color-mix(in srgb, var(--specimen-ink) 48%, transparent);
+}
+.cover-style-specimen > em {
+  position: absolute;
+  z-index: 3;
+  top: auto;
+  right: 9px;
+  bottom: 8px;
+  left: auto;
+  width: 21px;
+  height: 1px;
+  padding: 0;
+  background: color-mix(in srgb, var(--specimen-paper) 70%, transparent);
+  font-style: normal;
+}
+.cover-style-specimen > small {
+  position: absolute;
+  z-index: 4;
+  top: 7px;
+  left: 9px;
+  margin: 0;
+  color: color-mix(in srgb, var(--specimen-ink) 66%, transparent);
+  font-family: var(--font-number);
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1;
+}
+.cover-style-specimen.compact {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 48px;
+  border: 1px solid rgba(19, 50, 72, .14);
+  border-radius: 2px 10px 10px 2px;
+}
+.cover-style-specimen.compact > small { display: none; }
+.cover-style-specimen.compact > i { right: 41%; left: 5px; }
+.cover-style-specimen.compact > b { left: 8px; width: 13px; }
+.cover-style-specimen.compact::before { right: 4px; width: 18px; height: 18px; }
+.cover-style-specimen.compact::after { left: 54%; width: 4px; }
+
+.cover-style-specimen[data-category="中国"]::before { border-radius: 2px 50% 50% 2px; transform: rotate(-12deg); }
+.cover-style-specimen[data-category="中国"] > i { background: radial-gradient(circle at 76% 50%, color-mix(in srgb, var(--specimen-ink) 16%, transparent), transparent 42%); }
+.cover-style-specimen[data-category="科技"]::before { border-radius: 3px; transform: rotate(45deg); }
+.cover-style-specimen[data-category="科技"] > i { background: repeating-linear-gradient(0deg, transparent 0 7px, color-mix(in srgb, var(--specimen-ink) 14%, transparent) 7px 8px); }
+.cover-style-specimen[data-category="实验"]::before { width: 34px; border-radius: 0; transform: rotate(18deg); }
+.cover-style-specimen[data-category="实验"] > b { transform: rotate(-7deg); }
+.cover-style-specimen[data-category="插画"]::before { border-radius: 45% 55% 37% 63%; background: color-mix(in srgb, var(--specimen-accent) 16%, transparent); }
+.cover-style-specimen[data-category="插画"] > b { border-radius: 999px; }
+.cover-style-specimen[data-category="工业"]::before { border-radius: 0; border-width: 2px; transform: skewX(-12deg); }
+.cover-style-specimen[data-category="工业"] > i { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--specimen-ink) 13%, transparent) 5px 6px); }
+
+.cover-style-specimen[data-motif="1"]::after { left: 31%; transform: skewX(18deg); }
+.cover-style-specimen[data-motif="1"] > b { top: 24px; width: 39px; box-shadow: none; }
+.cover-style-specimen[data-motif="2"] { background: linear-gradient(155deg, var(--specimen-ink) 0 40%, var(--specimen-paper) 40% 78%, var(--specimen-accent) 78%); }
+.cover-style-specimen[data-motif="2"] > small { color: var(--specimen-paper); }
+.cover-style-specimen[data-motif="2"]::after { top: 9px; left: 61%; width: 23px; height: 23px; border-radius: 50%; transform: none; }
+.cover-style-specimen[data-motif="2"] > b { background: var(--specimen-paper); box-shadow: 0 9px color-mix(in srgb, var(--specimen-paper) 48%, transparent); }
+.cover-style-specimen[data-motif="3"]::after { left: 68%; width: 3px; transform: none; }
+.cover-style-specimen[data-motif="3"] > i { inset: 9px 10px 9px 10px; transform: rotate(-4deg); }
+.cover-style-specimen[data-motif="3"] > b { left: 23px; width: 43px; }
+.cover-style-specimen[data-motif="4"] { background: radial-gradient(circle at 72% 42%, var(--specimen-accent) 0 13%, transparent 14%), linear-gradient(90deg, var(--specimen-paper) 0 67%, var(--specimen-ink) 67%); }
+.cover-style-specimen[data-motif="4"]::after { left: 46%; width: 2px; transform: rotate(23deg); }
+.cover-style-specimen[data-motif="4"] > b { width: 23px; box-shadow: 8px 8px color-mix(in srgb, var(--specimen-ink) 38%, transparent); }
+.cover-style-specimen[data-motif="5"] { background: linear-gradient(135deg, var(--specimen-paper) 0 34%, var(--specimen-accent) 34% 38%, var(--specimen-paper) 38% 61%, var(--specimen-ink) 61%); }
+.cover-style-specimen[data-motif="5"]::after { display: none; }
+.cover-style-specimen[data-motif="5"] > b { top: 14px; height: 17px; background: transparent; border: 1px solid var(--specimen-ink); box-shadow: none; }
+
+.cover-style-library-copy { display: grid; gap: 3px; padding: 10px 11px 11px; }
+.cover-style-library-copy > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cover-style-library-copy > span em,
+.cover-style-library-copy > span small {
+  position: static;
+  margin: 0;
+  color: #8496a3;
+  font-family: var(--font-number);
+  font-size: 7.5px;
+  font-style: normal;
+  letter-spacing: .08em;
+}
+.cover-style-library-copy > span em { color: var(--cn-red-700); font-family: var(--font-ui); font-weight: 600; }
+.cover-style-library-copy b {
+  overflow: hidden;
+  color: var(--cn-navy-950);
+  font-family: var(--font-editorial);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cover-style-library-copy p { margin: 0; color: #778997; font-size: 9.5px; line-height: 1.35; }
+.cover-style-library > button.active .cover-style-library-copy b { color: var(--cn-red-800); }
+
+.cover-recommend-mini > button { grid-template-columns: 22px 42px minmax(0, 1fr) 24px; min-height: 70px; }
+.cover-recommend-list > button { grid-template-columns: 22px 42px minmax(0, 1fr) 28px; align-items: center; }
+.cover-recommend-list > button > em { align-self: start; }
+.cover-recommend-list .cover-style-specimen { align-self: start; }
+
+@media (max-width: 1180px) {
+  .cover-style-library { grid-template-columns: 1fr; }
+  .cover-style-library > button { min-height: 126px; }
+}

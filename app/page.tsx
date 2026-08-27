@@ -23,6 +23,7 @@ import {
   coverStyleCategories,
   coverStyles,
   recommendCoverStyles,
+  type CoverStyle,
   type CoverStyleCategory,
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
@@ -58,6 +59,52 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     moon: <path d="M20 15.4A8.5 8.5 0 0 1 8.6 4 8.5 8.5 0 1 0 20 15.4Z"/>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+}
+
+function CoverStyleSpecimen({ style, index, compact = false }: { style: CoverStyle; index: number; compact?: boolean }) {
+  return <span
+    className={`cover-style-specimen ${compact ? "compact" : ""}`}
+    data-category={style.category}
+    data-motif={index % 6}
+    style={{
+      "--specimen-paper": style.palette[0],
+      "--specimen-ink": style.palette[1],
+      "--specimen-accent": style.palette[2],
+    } as React.CSSProperties}
+    aria-hidden="true"
+  ><i/><b/><em/><small>{style.category}</small></span>;
+}
+
+const coverEditorialLabels: Record<string, [name: string, short: string]> = {
+  "minimal-cold": ["静域极简", "留白成势"],
+  "minimal-information": ["信息主义", "结论先行"],
+  apple: ["精密产品", "理性柔光"],
+  "classical-chinese": ["浅绛古意", "古意入纸"],
+  "modern-chinese": ["当代东方", "东方新序"],
+  "low-poly": ["晶面结构", "几何建模"],
+  nod: ["怪趣寓言", "隐喻叙事"],
+  "paper-cut": ["层纸东方", "纸艺景深"],
+  cyber: ["数字断层", "系统张力"],
+  vaporwave: ["旧日未来", "镭射怀旧"],
+  "op-art": ["光学秩序", "几何错视"],
+  "light-overlay": ["透光介质", "氤氲通透"],
+  "synesthetic-deconstruction": ["感知解构", "拆解重组"],
+  memphis: ["几何乐章", "明快秩序"],
+  pop: ["编辑波普", "强烈传播"],
+  steampunk: ["机械纪事", "工业怀旧"],
+  maximalism: ["丰盛编辑", "有序繁复"],
+  cubism: ["多维拼构", "多面观察"],
+  hyperreal: ["证据写实", "细节为证"],
+  "three-d-solid": ["单色空间", "仪式建模"],
+  mbe: ["轻量图解", "友好科普"],
+  "heavy-industrial": ["钢铁叙事", "工业有骨"],
+  pixel: ["像素纪元", "数字颗粒"],
+  gothic: ["暗影结构", "克制寓言"],
+};
+
+function coverStyleLabel(style: CoverStyle) {
+  const [name = style.name, short = style.short] = coverEditorialLabels[style.id] ?? [];
+  return { name, short };
 }
 
 const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么？
@@ -467,6 +514,7 @@ export default function Home() {
   const effectiveCoverCompany = coverCompanyOverride?.source === coverCompanySource ? coverCompanyOverride.value : coverProfile.companyName ?? "";
   const coverRecommendations = useMemo(() => recommendCoverStyles(article.title, safeMarkdown), [article.title, safeMarkdown]);
   const selectedCoverStyle = useMemo(() => coverStyles.find((item) => item.id === coverStyleId) ?? coverRecommendations[0].style, [coverRecommendations, coverStyleId]);
+  const selectedCoverLabel = coverStyleLabel(selectedCoverStyle);
   const filteredCoverStyles = useMemo(() => coverCategory === "全部" ? coverStyles : coverStyles.filter((item) => item.category === coverCategory), [coverCategory]);
   const coverProtocol = useMemo(() => buildCoverProtocol(selectedCoverStyle, article.title, coverProfile, effectiveCoverCompany.trim() || null), [article.title, coverProfile, effectiveCoverCompany, selectedCoverStyle]);
   const coverPrompt = useMemo(() => buildCoverPrompt(selectedCoverStyle, article.title, coverProfile, effectiveCoverCompany.trim() || null), [article.title, coverProfile, effectiveCoverCompany, selectedCoverStyle]);
@@ -795,7 +843,7 @@ export default function Home() {
   async function copyCoverPrompt() {
     try {
       await navigator.clipboard.writeText(coverPrompt);
-      notify(`“${selectedCoverStyle.name}”执行型封面指令已复制`);
+      notify(`“${selectedCoverLabel.name}”执行型封面指令已复制`);
     } catch {
       notify("浏览器未允许复制封面指令，请重试");
     }
@@ -910,7 +958,7 @@ export default function Home() {
           {stage === "内容" && <><div className="context-head"><span>文章大纲</span><small>{outline.length + 1} 个层级</small></div><div className="article-outline"><button className="outline-title" onClick={() => { setSelected({ index: -1, type: "title" }); articleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><i>题</i><span>{article.title}</span></button>{outline.map((item) => <button key={`${item.type}-${item.index}`} className={item.type === "subheading" ? "outline-subheading" : ""} onClick={() => jumpToBlock(item.index, item.type)}><i>{item.type === "heading" ? "章" : "节"}</i><span>{item.text}</span></button>)}</div></>}
           {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
           {stage === "视觉" && <><div className="context-head"><span>Markdown 版式</span><small>一键换骨，不动正文</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].palette.accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
-          {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><span className="cover-mini-palette">{item.style.palette.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><b>{item.style.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>)}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制封面协议 V2</button></>}
+          {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><b>{label.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>; })}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制封面协议 V2</button></>}
           {stage === "组件" && <><div className="context-head"><span>语义组件</span><small>点击或拖到画布</small></div><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索章节、观点、数据"/></label><div className="component-shelf">{filteredComponents.map((item) => <button key={item.kind} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><b>{item.kind}</b><small>{item.detail}</small></p><Icon name="plus" size={14}/></button>)}</div></>}
           {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>复制标题</b><small>{article.title.length}/64 字</small></span><Icon name="copy" size={15}/></button><button onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>复制作者</b><small>{article.author.length}/8 字</small></span><Icon name="copy" size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul></>}
         </div>
@@ -920,7 +968,7 @@ export default function Home() {
 
       <section className="canvas-area">
         <div className="canvas-toolbar">
-          <div><span className="canvas-kicker">{stage === "封面" ? "封面工作台" : "纸上工作台"}</span><strong>{stage === "封面" ? `${selectedCoverStyle.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
+          <div><span className="canvas-kicker">{stage === "封面" ? "封面工作台" : "纸上工作台"}</span><strong>{stage === "封面" ? `${selectedCoverLabel.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
           <div className="canvas-controls">
             {stage === "封面" ? <><span className="cover-ratio-tag">微信横幅 2.35:1</span><button onClick={() => { setStage("视觉"); setInspector("样式"); }}>返回正文设计</button></> : <>
             <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>成稿</button></div>
@@ -955,10 +1003,10 @@ export default function Home() {
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
           {stage === "封面" ? <section className="cover-workbench" onClick={(event) => event.stopPropagation()} style={{ "--cover-paper": selectedCoverStyle.palette[0], "--cover-ink": selectedCoverStyle.palette[1], "--cover-accent": selectedCoverStyle.palette[2] } as React.CSSProperties}>
-            <header className="cover-workbench-head"><div><span>Prompt Protocol / V2</span><h2>{selectedCoverStyle.name}</h2><p>{selectedCoverStyle.direction}</p></div><strong><b>{coverRecommendations.find((item) => item.style.id === selectedCoverStyle.id)?.score ?? 88}</b><small>匹配度</small></strong></header>
-            <div className="cover-concept-canvas" aria-label={`${selectedCoverStyle.name}封面构图草图`}>
+            <header className="cover-workbench-head"><div><span>Prompt Protocol / V2</span><h2>{selectedCoverLabel.name}</h2><p>{selectedCoverStyle.direction}</p></div><strong><b>{coverRecommendations.find((item) => item.style.id === selectedCoverStyle.id)?.score ?? 88}</b><small>匹配度</small></strong></header>
+            <div className="cover-concept-canvas" aria-label={`${selectedCoverLabel.name}封面构图草图`}>
               <span className="cover-concept-index">COVER / {String(coverStyles.findIndex((item) => item.id === selectedCoverStyle.id) + 1).padStart(2, "0")}</span>
-              <div className="cover-concept-title"><small>{coverProfile.subject} · {coverProfile.tone}</small><h3>{article.title}</h3><p>{selectedCoverStyle.short} / 最终成品必须准确排印此标题</p></div>
+              <div className="cover-concept-title"><small>{coverProfile.subject} · {coverProfile.tone}</small><h3>{article.title}</h3><p>{selectedCoverLabel.short} / 最终成品必须准确排印此标题</p></div>
               <div className="cover-concept-visual" aria-hidden="true"><i/><i/><i/><span>主视觉区</span>{effectiveCoverCompany && <div className="cover-logo-slot"><b>官方 LOGO 位</b><small>{effectiveCoverCompany}</small></div>}</div>
               <div className="cover-signature" aria-label={`固定署名：${coverSignature}`}><i/>{coverSignature}</div>
               <div className="cover-safe-line" aria-hidden="true"><span>标题安全线</span></div>
@@ -1018,9 +1066,9 @@ export default function Home() {
           <section className="cover-reading-card"><header><span><Icon name="spark" size={15}/>文章画像</span><small>已分析标题与正文语义</small></header><div><b>{coverProfile.subject}</b><b>{coverProfile.tone}</b><b>{coverProfile.intent}</b></div><p>{coverProfile.signals.length ? `识别线索：${coverProfile.signals.join("、")}` : "当前稿件线索较少，先按深度观点类内容推荐。"}</p></section>
           <section className={`cover-brand-card ${effectiveCoverCompany ? "enterprise" : "generic"}`}><div className="section-heading"><div><span>企业与官方 Logo</span><small>先核验身份，再交给图像模型</small></div><span className="cover-brand-state">{effectiveCoverCompany ? "待核验" : "未启用"}</span></div><label htmlFor="cover-company"><span>企业主体（自动识别，可修正）</span><small>企业稿请填写工商或品牌正式名称</small></label><div className="cover-company-input"><input id="cover-company" value={effectiveCoverCompany} placeholder="例如：兰石重装" onChange={(event) => setCoverCompanyOverride({ source: coverCompanySource, value: event.target.value })}/><button onClick={() => setCoverCompanyOverride(null)}>重置识别</button></div><p><b>{effectiveCoverCompany ? `已识别：${effectiveCoverCompany}` : "当前按非企业主题处理"}</b><span>{effectiveCoverCompany ? "执行指令会要求联网查找并双重核验官方 Logo；找不到即停止，绝不杜撰。" : "不会擅自植入第三方 Logo；若文章实际写企业，请在上方补全主体。"}</span></p></section>
           <section className="inspector-section cover-protocol-card"><div className="section-heading"><div><span>Prompt as Code V2</span><small>模板、锚点、隐喻、镜头、文字、禁区</small></div><span className="protocol-badge">六段</span></div><ol><li><i>01</i><span><b>模板</b><small>{coverProtocol.template}</small></span></li><li><i>02</i><span><b>主锚点</b><small>{coverProtocol.visualAnchor}</small></span></li><li><i>03</i><span><b>视觉隐喻</b><small>{coverProtocol.visualMetaphor}</small></span></li><li><i>04</i><span><b>镜头纪律</b><small>{coverProtocol.shotLanguage}</small></span></li><li><i>05</i><span><b>信息层级</b><small>{coverProtocol.hierarchy}</small></span></li><li><i>06</i><span><b>参考资产</b><small>{coverProtocol.referencePolicy}</small></span></li></ol><div className="cover-protocol-tags">{coverProtocol.styleTags.map((tag) => <span key={tag}>{tag}</span>)}</div></section>
-          <section className="inspector-section cover-recommend-section"><div className="section-heading"><div><span>首选方案</span><small>推荐不是审判，理由必须说得明白</small></div><span className="suggestion-count">03</span></div><div className="cover-recommend-list">{coverRecommendations.map((item, index) => <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><span className="cover-style-swatch">{item.style.palette.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><strong>{item.style.name}</strong><small>{item.reason}</small></span><b>{item.score}</b></button>)}</div></section>
-          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverStyle.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>标题</dt><dd>最终成品必须逐字排印“{article.title}”，不再只留空白安全区。</dd></div><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制封面协议 V2</button></section>
-          <section className="inspector-section cover-library"><div className="section-heading"><div><span>24种封面风格</span><small>按内容选语言，不按流行贴皮肤</small></div><span className="style-count">24</span></div><div className="cover-category-filter">{coverStyleCategories.map((category) => <button key={category} className={coverCategory === category ? "active" : ""} onClick={() => setCoverCategory(category)}>{category}</button>)}</div><div className="cover-style-library">{filteredCoverStyles.map((item) => <button key={item.id} className={selectedCoverStyle.id === item.id ? "active" : ""} onClick={() => setCoverStyleId(item.id)}><span className="cover-library-palette">{item.palette.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><b>{item.name}</b><small>{item.short}</small></span><em>{String(coverStyles.findIndex((style) => style.id === item.id) + 1).padStart(2, "0")}</em></button>)}</div></section>
+          <section className="inspector-section cover-recommend-section"><div className="section-heading"><div><span>首选方案</span><small>推荐不是审判，理由必须说得明白</small></div><span className="suggestion-count">03</span></div><div className="cover-recommend-list">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><strong>{label.name}</strong><small>{item.reason.replace(item.style.name, label.name)}</small></span><b>{item.score}</b></button>; })}</div></section>
+          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverLabel.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>标题</dt><dd>最终成品必须逐字排印“{article.title}”，不再只留空白安全区。</dd></div><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制封面协议 V2</button></section>
+          <section className="inspector-section cover-library"><div className="section-heading cover-library-heading"><div><span>视觉语言索引</span><small>24 种媒介气质，不是 24 张换色皮肤</small></div><span className="style-count">24</span></div><div className="cover-category-filter" aria-label="筛选封面视觉语言">{coverStyleCategories.map((category) => { const count = category === "全部" ? coverStyles.length : coverStyles.filter((item) => item.category === category).length; return <button key={category} className={coverCategory === category ? "active" : ""} aria-pressed={coverCategory === category} onClick={() => setCoverCategory(category)}><span>{category}</span><em>{String(count).padStart(2, "0")}</em></button>; })}</div><div className="cover-style-library">{filteredCoverStyles.map((item) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.id); const label = coverStyleLabel(item); return <button key={item.id} className={selectedCoverStyle.id === item.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.id} onClick={() => setCoverStyleId(item.id)}><CoverStyleSpecimen style={item} index={styleIndex}/><span className="cover-style-library-copy"><span><em>{item.category}</em><small>{String(styleIndex + 1).padStart(2, "0")}</small></span><b>{label.name}</b><p>{label.short}</p></span></button>; })}</div></section>
         </div>}
 
         {inspector === "规范" && <div className="inspector-content standards-panel">
