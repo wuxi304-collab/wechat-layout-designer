@@ -7868,6 +7868,18 @@ body { font-weight: 400; }
 .cover-brand-card > p b { color: var(--cn-navy-900); font-size: 11.5px; }
 .cover-brand-card > p span { color: var(--cn-muted); font-size: 10.5px; line-height: 1.65; }
 .cover-protocol-card { background: linear-gradient(155deg, rgba(238, 243, 247, .74), rgba(255, 255, 255, .92)); }
+.cover-harness-card { background: linear-gradient(155deg, rgba(248, 250, 252, .98), rgba(238, 243, 247, .74)); }
+.cover-harness-gates { display: grid; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+.cover-harness-gates li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 48px; padding: 9px 10px; border: 1px solid var(--cn-line); border-left-width: 3px; border-radius: 3px 10px 10px 3px; background: rgba(255,255,255,.78); }
+.cover-harness-gates li > svg { color: var(--cn-muted); }
+.cover-harness-gates li > span { display: grid; gap: 3px; min-width: 0; }
+.cover-harness-gates li b { color: var(--cn-navy-950); font-size: 11.5px; font-weight: 650; }
+.cover-harness-gates li small { overflow: hidden; color: var(--cn-muted); font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.cover-harness-gates li > em { color: var(--cn-muted); font-family: var(--font-number); font-size: 8.5px; font-style: normal; letter-spacing: .08em; }
+.cover-harness-gates li.pass { border-left-color: #39715c; }
+.cover-harness-gates li.pass > svg, .cover-harness-gates li.pass > em { color: #39715c; }
+.cover-harness-gates li.blocked { border-left-color: var(--cn-red-600); background: rgba(197,50,56,.038); }
+.cover-harness-gates li.blocked > svg, .cover-harness-gates li.blocked > em { color: var(--cn-red-700); }
 .protocol-badge { padding: 5px 9px; border: 1px solid rgba(197, 50, 56, .25); border-radius: 999px; color: var(--cn-red-700); font-family: var(--font-number); font-size: 9px; }
 .cover-protocol-card ol { display: grid; gap: 0; margin: 17px 0 0; padding: 0; list-style: none; }
 .cover-protocol-card li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 11px 0; border-top: 1px solid rgba(20, 48, 70, .1); }

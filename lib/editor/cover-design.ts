@@ -22,6 +22,9 @@ export type CoverArticleProfile = {
   intent: string;
   signals: string[];
   companyName: string | null;
+  companyConfidence: "high" | "medium" | null;
+  companyReason: string | null;
+  officialDomains: string[];
   isEnterprise: boolean;
   category: "industrial" | "technology" | "culture" | "business" | "people" | "science" | "youth" | "general";
 };
@@ -44,7 +47,24 @@ export type CoverPromptProtocol = {
   negativeLock: string[];
 };
 
-export const coverSignature = "钢铁私塾 唐淼";
+export const coverAuthorName = "唐淼";
+export const coverSignature = `钢铁私塾 ${coverAuthorName}`;
+
+export function normalizeCoverOcrText(value: string) {
+  return value.normalize("NFC").replace(/[\u200b-\u200d\u2060\ufeff]/g, "").replace(/\s+/g, " ").trim();
+}
+
+export function validateCoverTextManifest(title: string, ocrLinesOutsideLogo: string[]) {
+  const expected = [normalizeCoverOcrText(title), normalizeCoverOcrText(coverSignature)];
+  const actual = ocrLinesOutsideLogo.map(normalizeCoverOcrText).filter(Boolean);
+  const missing = expected.filter((line) => !actual.includes(line));
+  const unexpected = actual.filter((line) => !expected.includes(line));
+  return {
+    passed: missing.length === 0 && unexpected.length === 0,
+    missing,
+    unexpected,
+  };
+}
 
 export const coverStyles: CoverStyle[] = [
   { id: "minimal-cold", name: "极简艺术", short: "克制留白", category: "极简", keywords: ["极简", "朴素", "高冷", "留白"], fit: "观点、学术、人物独白", direction: "只留下一个主视觉与一个判断，让沉默也成为画面。", composition: "主体偏置三分法，大面积负空间承接标题", texture: "哑光纸面、柔和自然光、低对比阴影", palette: ["#F7F7F5", "#1B2430", "#B3262E"], signals: ["观点", "判断", "学术", "研究", "人物"], avoid: "不要增加无意义图标、光效与装饰边框", promptStyle: "高级极简编辑摄影，克制留白，哑光质感，低饱和" },
@@ -85,9 +105,34 @@ const categoryRules: Array<{ category: CoverArticleProfile["category"]; label: s
 
 export const coverStyleCategories: Array<"全部" | CoverStyleCategory> = ["全部", "极简", "中国", "科技", "实验", "插画", "工业"];
 
-const knownEnterpriseNames = [
-  "阿法拉伐", "奥托昆普", "华生精密", "泰来华顿", "兰石重装", "上海实达", "宝武", "青拓", "太钢", "酒钢", "首钢", "浦项", "森松", "中集", "天华院", "烨贸", "查特", "VDM",
-].sort((a, b) => b.length - a.length);
+type EnterpriseRecord = {
+  canonicalName: string;
+  aliases: string[];
+  officialDomains?: string[];
+};
+
+export type CompanyResolution = {
+  canonicalName: string;
+  matchedText: string;
+  confidence: "high" | "medium";
+  reason: string;
+  officialDomains: string[];
+};
+
+const enterpriseRecords: EnterpriseRecord[] = [
+  {
+    canonicalName: "中国天辰工程有限公司",
+    aliases: ["中国化学天辰公司", "中国天辰", "CNCEC-TCC"],
+    officialDomains: ["china-tcc.com", "cncec.com.cn"],
+  },
+  ...[
+    "阿法拉伐", "奥托昆普", "华生精密", "泰来华顿", "兰石重装", "上海实达", "宝武", "青拓", "太钢", "酒钢", "首钢", "浦项", "森松", "中集", "天华院", "烨贸", "查特", "VDM",
+  ].map((name) => ({ canonicalName: name, aliases: [name] })),
+];
+
+const enterpriseAliases = enterpriseRecords
+  .flatMap((record) => record.aliases.map((alias) => ({ alias, record })))
+  .sort((a, b) => b.alias.length - a.alias.length);
 
 function cleanCompanyCandidate(value: string) {
   return value
@@ -96,22 +141,71 @@ function cleanCompanyCandidate(value: string) {
     .trim();
 }
 
-export function detectCompanyName(title: string, markdown: string) {
-  const source = `${title}\n${markdown}`;
-  const lines = source.split(/\r?\n/).map(cleanCompanyCandidate).filter(Boolean).slice(0, 80);
-  const legalEntity = /(?:^|[\s，。；：、])([A-Za-z0-9\u3400-\u9fff·]{2,28}?(?:有限责任公司|股份有限公司|有限公司|集团公司|控股集团|集团|研究院|设计院))(?=$|[\s，。；：、])/;
-  for (const line of lines) {
-    const match = line.match(legalEntity);
-    if (match?.[1]) return match[1];
+function recordForCompany(value: string) {
+  return enterpriseRecords.find((record) => record.canonicalName === value || record.aliases.includes(value));
+}
+
+function isPlausibleLegalEntity(value: string) {
+  if (value.length < 4 || value.length > 36) return false;
+  return !/(?:是把|理解成|看作|作为|属于|所谓|一家|很多|我们|他们|它|这个|那个|某个)/.test(value);
+}
+
+export function resolveCompanyEntity(title: string, markdown: string): CompanyResolution | null {
+  const cleanedTitle = cleanCompanyCandidate(title);
+  const knownInTitle = enterpriseAliases.find(({ alias }) => cleanedTitle.includes(alias));
+  if (knownInTitle) {
+    return {
+      canonicalName: knownInTitle.record.canonicalName,
+      matchedText: knownInTitle.alias,
+      confidence: "high",
+      reason: "标题命中企业别名表",
+      officialDomains: knownInTitle.record.officialDomains ?? [],
+    };
   }
 
-  const knownInTitle = knownEnterpriseNames.find((name) => title.includes(name));
-  if (knownInTitle) return knownInTitle;
+  const legalEntityPattern = /([A-Za-z0-9\u3400-\u9fff·]{2,28}?(?:有限责任公司|股份有限公司|有限公司|集团公司|控股集团|集团|研究院|设计院))/;
+  const legalInTitle = cleanedTitle.match(legalEntityPattern)?.[1];
+  if (legalInTitle && isPlausibleLegalEntity(legalInTitle)) {
+    const record = recordForCompany(legalInTitle);
+    return {
+      canonicalName: record?.canonicalName ?? legalInTitle,
+      matchedText: legalInTitle,
+      confidence: "high",
+      reason: "标题包含完整企业名称",
+      officialDomains: record?.officialDomains ?? [],
+    };
+  }
+
+  const lines = markdown.split(/\r?\n/).map(cleanCompanyCandidate).filter(Boolean).slice(0, 80);
+  for (const line of lines) {
+    const structured = line.match(/^(?:企业主体|公司名称|企业名称|品牌主体|主体)\s*[：:]\s*(.+)$/)?.[1];
+    const fullLineEntity = line.match(new RegExp(`^${legalEntityPattern.source}$`))?.[1];
+    const candidate = cleanCompanyCandidate(structured ?? fullLineEntity ?? "");
+    if (!candidate || !isPlausibleLegalEntity(candidate)) continue;
+    const record = recordForCompany(candidate);
+    return {
+      canonicalName: record?.canonicalName ?? candidate,
+      matchedText: candidate,
+      confidence: "high",
+      reason: structured ? "结构化企业主体字段" : "正文独立企业全称行",
+      officialDomains: record?.officialDomains ?? [],
+    };
+  }
 
   const titlePrefix = cleanCompanyCandidate(title.split(/[：:，,｜|—]/)[0] ?? "");
   const hasEnterpriseContext = /公司|集团|企业|上市|股份|成立于|总部|创始人|董事长|产能|工厂|主营|营收/.test(markdown);
   const looksLikeNamedEntity = titlePrefix.length >= 2 && titlePrefix.length <= 12 && !/中国|行业|贸易商|企业|市场|未来|为什么|如何|真相|标准/.test(titlePrefix);
-  return hasEnterpriseContext && looksLikeNamedEntity ? titlePrefix : null;
+  return hasEnterpriseContext && looksLikeNamedEntity ? {
+    canonicalName: titlePrefix,
+    matchedText: titlePrefix,
+    confidence: "medium",
+    reason: "标题前缀推断，生成前仍需人工确认",
+    officialDomains: [],
+  } : null;
+}
+
+export function detectCompanyName(title: string, markdown: string) {
+  return resolveCompanyEntity(title, markdown)?.canonicalName ?? null;
 }
 
 export function analyzeCoverContent(title: string, markdown: string): CoverArticleProfile {
@@ -122,8 +216,19 @@ export function analyzeCoverContent(title: string, markdown: string): CoverArtic
   const subject = primary && primary.matched.length ? primary.label : "深度观点";
   const tone = /危机|崩塌|事故|真相|大战|困境|焦虑/.test(text) ? "冷静辨析" : /历史|百年|传统|故事/.test(text) ? "叙事沉淀" : /ai|人工智能|数字|未来|技术/.test(text) ? "科技理性" : /钢铁|不锈钢|材料|制造|工业/.test(text) ? "工业理性" : "克制判断";
   const intent = /\?|？|为什么|真相|能否|是否/.test(title) ? "问题拆解" : /对比|vs|替代|不如|区别/i.test(title) ? "对比判断" : /标准|牌号|性能|工艺|机理/.test(text) ? "知识解释" : /人物|其人|创始人|家族|故事/.test(text) ? "人物叙事" : "观点传播";
-  const companyName = detectCompanyName(title, markdown);
-  return { subject, tone, intent, signals: primary?.matched.slice(0, 4) ?? [], companyName, isEnterprise: Boolean(companyName), category: primary?.matched.length ? primary.category : "general" };
+  const company = resolveCompanyEntity(title, markdown);
+  return {
+    subject,
+    tone,
+    intent,
+    signals: primary?.matched.slice(0, 4) ?? [],
+    companyName: company?.canonicalName ?? null,
+    companyConfidence: company?.confidence ?? null,
+    companyReason: company?.reason ?? null,
+    officialDomains: company?.officialDomains ?? [],
+    isEnterprise: Boolean(company),
+    category: primary?.matched.length ? primary.category : "general",
+  };
 }
 
 export function recommendCoverStyles(title: string, markdown: string): CoverRecommendation[] {
@@ -199,7 +304,7 @@ export function buildCoverProtocol(style: CoverStyle, title: string, profile: Co
       ? "经可靠来源核验的人物肖像，配一件能说明其身份的职业物证"
       : `${profile.subject}中最能证明文章判断的一件真实对象或材料局部`;
   const referencePolicy = companyName
-    ? `必须先取得${companyName}官方 Logo 与官方影像参考；资产无法核验时停止生成并向用户索取，禁止模型脑补。`
+    ? `必须先取得${companyName}官方 Logo 原始文件、来源 URL 与 SHA-256，并把原件作为独立图层直接合成；任一资产无法核验时停止生成并向用户索取，禁止模型脑补。`
     : profile.category === "people"
       ? "真实人物必须使用可核验肖像参考；无法确认身份时改用不指向具体人物的物证，不虚构面孔。"
       : "不使用来源不明的品牌、人物或专有产品外观；事实型对象优先依据可靠参考，概念部分只负责表达关系。";
@@ -219,16 +324,74 @@ export function buildCoverProtocol(style: CoverStyle, title: string, profile: Co
   };
 }
 
+export function buildCoverHarness(title: string, companyName: string | null) {
+  const resolvedTitle = title === "未命名文章" ? "" : normalizeCoverOcrText(title);
+  const companyRecord = companyName ? recordForCompany(companyName) : undefined;
+  return {
+    harnessVersion: "3.0",
+    deliveryPolicy: "ALL_GATES_MUST_PASS",
+    pipeline: [
+      "LOCK_INPUTS",
+      "RESOLVE_ENTITY",
+      "ACQUIRE_OFFICIAL_ASSETS",
+      "GENERATE_TEXT_FREE_BACKGROUND",
+      "COMPOSITE_EXACT_TEXT_AND_LOGO",
+      "VERIFY_OCR_AND_ASSET_FINGERPRINT",
+      "DELIVER_ONE_FINISHED_COVER",
+    ],
+    inputLock: {
+      title: resolvedTitle || "BLOCKED: REQUIRE_TITLE",
+      authorName: coverAuthorName,
+      signature: coverSignature,
+      allowedTextOutsideLogo: resolvedTitle ? [resolvedTitle, coverSignature] : [coverSignature],
+      unicodeNormalization: "NFC_ONLY",
+    },
+    entityGate: {
+      company: companyName,
+      officialDomainHints: companyRecord?.officialDomains ?? [],
+      passWhen: companyName ? "canonical_name_confirmed" : "not_an_enterprise_article",
+      failureAction: "BLOCK_DELIVERY",
+    },
+    brandAssetGate: {
+      required: Boolean(companyName),
+      status: companyName ? "BLOCKED_UNTIL_VERIFIED_ASSET" : "NOT_APPLICABLE",
+      passWhen: "official_logo_file_attached && source_url_verified && sha256_recorded",
+      allowedOperation: "PLACE_ORIGINAL_ASSET_ONLY",
+      forbiddenOperations: ["GENERATE", "REDRAW", "TRACE", "RESTYLE", "RECOLOR"],
+      failureAction: "BLOCK_DELIVERY_AND_REQUEST_LOGO",
+    },
+    compositionGate: {
+      background: "generated_without_text_or_logo",
+      typography: "deterministic_typesetting_layer",
+      logo: companyName ? "original_asset_composite_layer" : "none",
+      repairPolicy: "RENDER_LAYER_AGAIN; NEVER_ASK_IMAGE_MODEL_TO_REWRITE_TEXT_OR_LOGO",
+    },
+    acceptance: {
+      ratio: "2.35:1",
+      ocrMode: "MASK_LOGO_BBOX_THEN_OCR",
+      ocrExactMatch: true,
+      extraTextCount: 0,
+      signatureExact: coverSignature,
+      logoFingerprintMatch: Boolean(companyName),
+      maxRepairAttempts: 2,
+      onFailure: "REJECT_OUTPUT",
+    },
+  };
+}
+
 export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName) {
   const resolvedTitle = title === "未命名文章" ? "" : title.trim();
   const protocol = buildCoverProtocol(style, title, profile, companyName);
+  const harness = buildCoverHarness(title, companyName);
+  const officialDomains = companyName ? recordForCompany(companyName)?.officialDomains ?? profile.officialDomains : [];
   const titleBlock = resolvedTitle
     ? [
       "【必须排印的唯一主标题】",
       `“${resolvedTitle}”`,
       "最终成品必须含有上述标题。逐字照录，一字不漏、一字不改，不增删标点，不调换语序，不使用近义词，不截断；全图只出现这一处主标题。",
       "采用清晰的中文编辑字体，标题是第一视觉层级；在缩略图尺寸下仍可辨认。断行只能服从语义，不把词组、数字与单位拆开。",
-      "若生图模型不能保证中文准确：先生成无字底图，再用支持精确中文排版的合成步骤叠加上述标题，并逐字校对；不得交付无标题成品。",
+      "禁止让图像生成模型绘制标题。必须先生成无字底图，再用确定性排版工具把标题作为独立文字层合成；这不是备用方案，而是唯一允许的生产方式。",
+      "标题合成后必须执行 OCR；按 NFC 规范化并合并空白后，识别结果必须与锁定标题完全相等。任一汉字、标点或顺序不同，立即拒绝该成品。",
     ]
     : [
       "【阻断条件：缺少标题】",
@@ -238,12 +401,13 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     ? [
       "【企业品牌核验｜必须先完成，未通过不得生成】",
       `企业主体：${companyName}。`,
+      ...(officialDomains.length ? [`官方域名线索：${officialDomains.join("、")}。域名只用于缩小检索范围，仍须在执行时确认页面归属与资产版本。`] : []),
       "1. 生成前先联网核验企业主体，并查找该企业当前使用的官方 Logo。优先来源：企业官网品牌页/媒体资料包、认证公众号或认证官方账号、交易所公告与公司正式披露文件。",
       "2. 至少用两条权威信号核对企业名称、Logo 图形、标准色与当前版本；搜索结果页、百科、自媒体和素材下载站不能作为唯一依据。",
-      "3. 下载或截取核验通过的官方 Logo 原始资产，把它作为 reference image 交给图像生成或后期合成；不得让生图模型凭文字自行画 Logo。",
+      "3. 下载核验通过的官方 Logo 原始文件，记录来源 URL、下载时间与 SHA-256；Logo 必须作为独立资产层直接合成，绝不交给生图模型绘制，也不接受模型生成的近似图形。",
       "4. 保持官方 Logo 的比例、颜色、字形与安全留白；不得重绘、变形、换色、描边、立体化、艺术化，也不得生成所谓‘相似 Logo’。",
       "5. 若找不到可验证的官方 Logo，或不同来源互相冲突：立即停止并请用户上传官方 Logo 文件。绝不猜测、杜撰或仿制。",
-      "6. 交付时同时列出 Logo 来源 URL 与核验依据；封面只放一次 Logo，优先置于右上安全区，不得压过文章标题，也不得占用右下角固定署名区。",
+      "6. 交付前对成品 Logo 区域与原始资产做指纹/像素一致性检查；封面只放一次 Logo，优先置于右上安全区，不得压过文章标题，也不得占用右下角固定署名区。",
     ]
     : [
       "【品牌资产】",
@@ -251,10 +415,16 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     ];
 
   return [
-    "【Prompt as Code 协议 V2｜以下是执行参数，不得作为文字画进封面】",
+    "【Prompt as Code 协议 V3 + Verification Harness｜以下是执行参数，不得作为文字画进封面】",
     "【任务】",
     "制作微信公众号横幅封面，画幅比例严格为 2.35:1（建议 2350×1000 或 900×383），高清，商业编辑级完成度。",
     "只交付一张完成封面。不要 moodboard、样机、设计说明、过程图、四宫格、方案板或带界面的预览图。",
+    "【生产方式｜强制分层，不得跳步】",
+    "1. 锁定标题、作者名、署名和企业正式名称；禁止后续步骤改写。",
+    "2. 企业稿先取得官方 Logo 原始文件及证据包；未通过品牌资产闸门时，状态必须为 BLOCKED，不得开始成品生成。",
+    "3. 图像模型只生成无文字、无 Logo 的背景层，并为标题、Logo、署名预留安全区。",
+    "4. 使用 Canvas、SVG、Sharp、ImageMagick、设计软件或等效确定性工具，分别合成标题层、官方 Logo 原件层和署名层。",
+    "5. 对合成成品执行 OCR、额外文字扫描、Logo 指纹核对和尺寸检查；全部通过才允许交付。",
     ...titleBlock,
     "【内容判断】",
     `文章主题：${resolvedTitle ? `《${resolvedTitle}》` : "待补充"}。`,
@@ -277,27 +447,38 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     ...brandBlock,
     "【固定署名｜必须排印】",
     `在画面右下角固定排印“${coverSignature}”。必须逐字准确、保持一行，字号明显小于主标题但在手机端仍可辨认；使用克制的中文编辑字体，不加印章、头像、二维码或多余前缀。`,
-    "署名属于最终成品文字层。若生图模型不能准确生成，必须与主标题一起使用精确排版的后期合成步骤叠加；不得遗漏、改写或挪到其他位置。",
+    `作者名锁定为“${coverAuthorName}”，不得替换为唐森、唐焱、唐深或任何形近字。署名必须与主标题一样由确定性排版工具合成，禁止图像生成模型书写。`,
+    `OCR 验收必须完整得到“${coverSignature}”；识别为“钢铁私塾 唐森”或其他任何变体时，状态为 TEXT_MISMATCH，拒绝交付并重新渲染文字层。`,
     "【负面锁定】",
     ...protocol.negativeLock.map((item) => `- ${item}。`),
+    "【Verification Harness｜机器执行，不得出现在画面中】",
+    JSON.stringify(harness, null, 2),
     "【结构参数｜仅供 Agent 解析，不得出现在画面中】",
     JSON.stringify({
       type: "WeChat Editorial Cover",
+      protocolVersion: "3.0",
+      productionMode: "TEXT_FREE_BACKGROUND_THEN_DETERMINISTIC_COMPOSITE",
       template: protocol.template,
       subject: protocol.visualAnchor,
       metaphor: protocol.visualMetaphor,
       layout: { ratio: "2.35:1", hierarchy: protocol.hierarchy, composition: style.composition },
       style: { tags: protocol.styleTags, materials: style.texture, palette: style.palette },
-      text: { title: resolvedTitle || "BLOCKED: REQUIRE_TITLE", signature: coverSignature, titleCount: 1 },
-      reference: { company: companyName, policy: protocol.referencePolicy },
+      text: { title: resolvedTitle || "BLOCKED: REQUIRE_TITLE", authorName: coverAuthorName, signature: coverSignature, titleCount: 1, exactMatch: true },
+      reference: { company: companyName, officialDomains, policy: protocol.referencePolicy, logoMode: companyName ? "ORIGINAL_ASSET_ONLY" : "NONE" },
       output: { count: 1, format: "finished cover" },
       negative: protocol.negativeLock,
     }, null, 2),
+    "【失败即阻断｜不得带病交付】",
+    "- ENTITY_UNRESOLVED：企业正式名称无法确认，停止并请求用户确认。",
+    "- LOGO_ASSET_MISSING：没有官方 Logo 原始文件、来源 URL 或 SHA-256，停止并请求用户上传。",
+    "- TEXT_MISMATCH：OCR 未逐字命中标题或“钢铁私塾 唐淼”，只重绘文字层，不让图像模型重写。",
+    "- EXTRA_TEXT：除标题和署名外检测到额外文字（Logo 边界框内文字除外），拒绝成品。",
+    "- LOGO_FINGERPRINT_MISMATCH：成品 Logo 与官方资产不一致，重新放置原件，禁止修画。",
     "【成品检查｜全部通过才可交付】",
-    "- 标题已真实出现在最终图片中，并与指定标题逐字一致；没有第二标题、乱码或无意义英文。",
+    "- 屏蔽 Logo 边界框后执行 OCR：只识别到锁定标题与锁定署名，标题逐字一致且没有第二标题、乱码或无意义英文。",
     `- 右下角已准确排印“${coverSignature}”，保持一行，未被图片、Logo 或安全线遮挡。`,
     "- 主体事实准确，画面克制，无廉价模板感、伪 3D 塑料感和多余装饰。",
-    companyName ? "- 官方 Logo 已使用真实参考资产，来源可追溯，形态与标准色未经改造。" : "- 未擅自添加任何企业或机构 Logo。",
+    companyName ? "- 官方 Logo 以原始资产层直接合成；来源 URL、SHA-256、Logo 边界框和指纹比对结果均已记录。" : "- 未擅自添加任何企业或机构 Logo。",
     "- 画幅为 2.35:1，标题与关键主体均处于安全区；企业稿的 Logo 也必须在安全区，移动端缩略图可读。",
   ].join("\n");
 }
