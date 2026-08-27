@@ -27,6 +27,7 @@ import {
   type CoverStyleCategory,
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
+import { DocumentImportError, importDocumentFile } from "@/lib/editor/document-import";
 import { applyWechatTimelineTextSafety, findWechatFlowLayoutRisks, findWechatTimelineTextRisks, inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
 
 type IconName =
@@ -481,6 +482,8 @@ export default function Home() {
   const [typesetOpen, setTypesetOpen] = useState(false);
   const [markdown, setMarkdown] = useState(sampleMarkdown);
   const [sourceEncoding, setSourceEncoding] = useState("UTF-8 · 编辑器");
+  const [importingFile, setImportingFile] = useState(false);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [toast, setToast] = useState("");
   const [adopted, setAdopted] = useState<string[]>(["quote"]);
   const [selected, setSelected] = useState<{ index: number; type: BlockType } | null>(null);
@@ -794,18 +797,33 @@ export default function Home() {
     notify(`已恢复${last.label}`);
   }
 
-  async function importText(file?: File) {
+  async function importFile(file?: File) {
     if (!file) return;
-    if (!/\.(md|markdown|txt)$/i.test(file.name)) return notify("当前可直接导入 Markdown 或 TXT");
+    setImportingFile(true);
     try {
-      const decoded = decodeImportedBuffer(await file.arrayBuffer());
-      setMarkdown(decoded.text);
-      setSourceEncoding(`${decoded.encoding} · 文件`);
-      const issues = findEncodingIssues(decoded.text);
-      notify(issues.length ? `已按 ${decoded.encoding} 导入，仍有 ${issues.length} 项编码风险` : `已按 ${decoded.encoding} 导入，字符检查通过`);
-    } catch {
-      notify("文件编码无法识别，请另存为 UTF-8 后重试");
+      if (/\.(md|markdown|txt)$/i.test(file.name)) {
+        const decoded = decodeImportedBuffer(await file.arrayBuffer());
+        const nextMarkdown = normalizeMarkdownInput(decoded.text);
+        setVersions((items) => [...items.slice(-4), { markdown, label: `导入 ${file.name} 前` }]);
+        setMarkdown(nextMarkdown);
+        setSourceEncoding(`${decoded.encoding} · 文件`);
+        setImportWarnings([]);
+        const issues = findEncodingIssues(nextMarkdown);
+        notify(issues.length ? `已按 ${decoded.encoding} 导入，仍有 ${issues.length} 项编码风险` : `已按 ${decoded.encoding} 导入，字符检查通过`);
+      } else {
+        const imported = await importDocumentFile(file);
+        setVersions((items) => [...items.slice(-4), { markdown, label: `导入 ${file.name} 前` }]);
+        setMarkdown(normalizeMarkdownInput(imported.markdown));
+        setSourceEncoding(imported.sourceLabel);
+        setImportWarnings(imported.warnings);
+        notify(imported.warnings.length ? `${imported.summary}；有 ${imported.warnings.length} 项复核提示` : imported.summary);
+      }
+      setStage("内容");
+      setSourceOpen(true);
+    } catch (error) {
+      notify(error instanceof DocumentImportError ? error.message : "文件解析失败，请检查格式后重试");
     } finally {
+      setImportingFile(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
@@ -944,8 +962,8 @@ export default function Home() {
         <section className="left-input" aria-label="稿件输入">
           <div className="left-input-heading"><div><span>稿件输入</span><small>先放稿，再设计</small></div><i>{wordCount.toLocaleString()} 字</i></div>
           <button className="left-input-primary" onClick={() => setSourceOpen(true)}><Icon name="document" size={16}/><span><b>编辑 Markdown</b><small>粘贴、清空或继续修改</small></span><Icon name="chevron" size={14}/></button>
-          <button className="left-input-import" onClick={() => fileRef.current?.click()}><Icon name="plus" size={14}/>导入本地稿件 <small>.md / .txt</small></button>
-          <input ref={fileRef} type="file" accept=".md,.markdown,.txt" hidden onChange={(event) => importText(event.target.files?.[0])}/>
+          <button className="left-input-import" onClick={() => fileRef.current?.click()} disabled={importingFile}><Icon name={importingFile ? "history" : "plus"} size={14}/>{importingFile ? "正在解析文件" : "导入本地稿件"} <small>MD · Word · PDF</small></button>
+          <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.docx,.pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" hidden onChange={(event) => importFile(event.target.files?.[0])}/>
         </section>
         <div className="panel-label">设计流程</div>
         <nav className="workflow-nav" aria-label="设计流程">
@@ -1096,7 +1114,7 @@ export default function Home() {
         {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.palette.accent }}/>当前主题<button onClick={() => setInspector("样式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.palette.ink }}/>墨黑<button onClick={() => setInspector("样式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => notify("品牌署名编辑将在下一版开放")}>编辑</button></label><label><span>结尾</span><b>品牌宣言 + 交流声明</b><button onClick={() => notify("品牌结尾编辑将在下一版开放")}>编辑</button></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><div className="brand-consistency"><strong>100%</strong><div><i/><span>颜色、署名与语气均一致</span></div></div></section></div>}
       </aside>
 
-      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()}><Icon name="document" size={14}/>导入文件</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : "标题已识别"} · 自动保存于本机</small></span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify(encodingIssues.length ? `已完成分析，发现 ${encodingIssues.length} 项编码风险` : article.title === "未命名文章" ? "正文已编排，但尚未识别标题" : `已识别标题：${article.title}`); }}>分析并编排</button></footer></div></div>}
+      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? "正在解析" : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : "标题已识别"} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span><button onClick={() => { setSourceOpen(false); setStage("编排"); notify(encodingIssues.length ? `已完成分析，发现 ${encodingIssues.length} 项编码风险` : article.title === "未命名文章" ? "正文已编排，但尚未识别标题" : `已识别标题：${article.title}`); }}>分析并编排</button></footer></div></div>}
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );

@@ -5612,6 +5612,8 @@ body { background: var(--jn-rain-200); color: var(--jn-ink-900); }
 .left-input-import svg { color: #c16e5c; }
 .left-input-import small { margin-left: auto; color: #73837a; font-size: 8.5px; }
 .left-input-import:hover { transform: translateX(2px); border-bottom-color: rgba(194, 110, 91, .24); color: #edf2ee !important; }
+.left-input-import:disabled { cursor: wait; opacity: .7; transform: none; }
+.source-health .import-warning { display: inline-flex; align-items: center; gap: 4px; color: #9b5a43; }
 .left-input button:active { transform: translateY(1px) scale(.993); }
 
 .panel-label { padding-top: 17px; }
