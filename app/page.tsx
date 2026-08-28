@@ -109,6 +109,59 @@ function coverStyleLabel(style: CoverStyle) {
   return { name, short };
 }
 
+function loadCoverImage(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const source = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(source);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(source);
+      reject(new Error(`无法读取图片：${file.name}`));
+    };
+    image.src = source;
+  });
+}
+
+function drawImageCover(context: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = (image.naturalWidth - sourceWidth) / 2;
+  const sourceY = (image.naturalHeight - sourceHeight) / 2;
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+}
+
+function colorWithAlpha(hex: string, alpha: number) {
+  const normalized = hex.replace("#", "");
+  const value = Number.parseInt(normalized.length === 3 ? normalized.split("").map((item) => item + item).join("") : normalized, 16);
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
+}
+
+function breakCoverTitle(context: CanvasRenderingContext2D, title: string, maxWidth: number) {
+  const prohibitedLineStart = /^[，。！？；：、）】》”’]/;
+  const chars = Array.from(title);
+  const lines: string[] = [];
+  let line = "";
+  chars.forEach((char) => {
+    const candidate = line + char;
+    if (line && context.measureText(candidate).width > maxWidth && !prohibitedLineStart.test(char)) {
+      lines.push(line);
+      line = char;
+    } else {
+      line = candidate;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+function safeDownloadName(title: string) {
+  return title.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 48) || "公众号封面";
+}
+
 const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么？
 
 价格战从来没有真正的赢家。对不锈钢贸易商而言，低价曾是最直接的武器，也正在成为最危险的依赖。
@@ -495,6 +548,9 @@ export default function Home() {
   const [coverStyleId, setCoverStyleId] = useState("");
   const [coverCategory, setCoverCategory] = useState<"全部" | CoverStyleCategory>("全部");
   const [coverCompanyOverride, setCoverCompanyOverride] = useState<{ source: string; value: string } | null>(null);
+  const [coverBackgroundAsset, setCoverBackgroundAsset] = useState<{ identity: string; file: File } | null>(null);
+  const [coverLogoAsset, setCoverLogoAsset] = useState<{ company: string; file: File } | null>(null);
+  const [coverLogoSourceEntry, setCoverLogoSourceEntry] = useState<{ company: string; value: string } | null>(null);
   const [versions, setVersions] = useState<{ markdown: string; label: string }[]>([]);
   const [wechatStatus, setWechatStatus] = useState<{ configured: boolean; connected: boolean; mode: string; appId: string | null; message: string }>({ configured: false, connected: false, mode: "未配置", appId: null, message: "尚未检查连接" });
   const [checkingWechat, setCheckingWechat] = useState(false);
@@ -524,6 +580,22 @@ export default function Home() {
   const coverProtocol = useMemo(() => buildCoverProtocol(selectedCoverStyle, article.title, coverProfile, effectiveCoverCompany.trim() || null), [article.title, coverProfile, effectiveCoverCompany, selectedCoverStyle]);
   const coverHarness = useMemo(() => buildCoverHarness(article.title, effectiveCoverCompany.trim() || null), [article.title, effectiveCoverCompany]);
   const coverPrompt = useMemo(() => buildCoverPrompt(selectedCoverStyle, article.title, coverProfile, effectiveCoverCompany.trim() || null), [article.title, coverProfile, effectiveCoverCompany, selectedCoverStyle]);
+  const coverBackgroundIdentity = `${article.title}\u0000${selectedCoverStyle.id}`;
+  const coverBackgroundFile = coverBackgroundAsset?.identity === coverBackgroundIdentity ? coverBackgroundAsset.file : null;
+  const coverLogoFile = coverLogoAsset?.company === effectiveCoverCompany.trim() ? coverLogoAsset.file : null;
+  const coverLogoSource = coverLogoSourceEntry?.company === effectiveCoverCompany.trim() ? coverLogoSourceEntry.value : "";
+  const coverLogoSourceValid = useMemo(() => {
+    if (!effectiveCoverCompany.trim()) return true;
+    try {
+      const hostname = new URL(coverLogoSource).hostname.replace(/^www\./, "").toLowerCase();
+      return coverHarness.company.officialDomainHints.length
+        ? coverHarness.company.officialDomainHints.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))
+        : /^https?:\/\//i.test(coverLogoSource);
+    } catch {
+      return false;
+    }
+  }, [coverHarness.company.officialDomainHints, coverLogoSource, effectiveCoverCompany]);
+  const canComposeCover = Boolean(coverBackgroundFile && (!effectiveCoverCompany.trim() || (coverLogoFile && coverLogoSourceValid)));
   const outline = useMemo(() => article.blocks.map((block, index) => block.type === "heading" || block.type === "subheading" ? { index, type: block.type, text: block.text } : null).filter((item): item is { index: number; type: "heading" | "subheading"; text: string } => Boolean(item)), [article.blocks]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
@@ -866,9 +938,96 @@ export default function Home() {
   async function copyCoverPrompt() {
     try {
       await navigator.clipboard.writeText(coverPrompt);
-      notify(`“${selectedCoverLabel.name}”封面制作指令已复制`);
+      notify(`“${selectedCoverLabel.name}”素材准备任务已复制`);
     } catch {
-      notify("浏览器未允许复制封面指令，请重试");
+      notify("浏览器未允许复制素材任务，请重试");
+    }
+  }
+
+  async function composeFinalCover() {
+    if (article.title === "未命名文章") return notify("缺少文章标题，无法生成最终封面");
+    if (findEncodingIssues(article.title).length) return notify("标题含有异常字符，请先修正原稿");
+    if (!coverBackgroundFile) return notify("请先导入无字底图文件");
+    if (effectiveCoverCompany.trim() && !coverLogoFile) return notify("企业稿必须先导入官方 Logo 原图");
+    if (effectiveCoverCompany.trim() && !coverLogoSourceValid) return notify("请填写可核验的官方 Logo 来源网址");
+
+    try {
+      const [background, logo] = await Promise.all([
+        loadCoverImage(coverBackgroundFile),
+        coverLogoFile ? loadCoverImage(coverLogoFile) : Promise.resolve(null),
+      ]);
+      await document.fonts?.ready;
+      const canvas = document.createElement("canvas");
+      canvas.width = 2350;
+      canvas.height = 1000;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("浏览器无法创建 Canvas");
+
+      drawImageCover(context, background, canvas.width, canvas.height);
+
+      const wash = context.createLinearGradient(0, 0, 1700, 0);
+      wash.addColorStop(0, colorWithAlpha(selectedCoverStyle.palette[0], 0.99));
+      wash.addColorStop(0.58, colorWithAlpha(selectedCoverStyle.palette[0], 0.92));
+      wash.addColorStop(0.82, colorWithAlpha(selectedCoverStyle.palette[0], 0.28));
+      wash.addColorStop(1, colorWithAlpha(selectedCoverStyle.palette[0], 0));
+      context.fillStyle = wash;
+      context.fillRect(0, 0, 1800, canvas.height);
+
+      context.fillStyle = selectedCoverStyle.palette[2];
+      context.fillRect(96, 155, 14, 555);
+      context.fillRect(150, 178, 160, 7);
+
+      const title = normalizeMarkdownInput(article.title).trim();
+      let titleSize = title.length > 42 ? 60 : title.length > 28 ? 70 : 82;
+      let titleLines: string[] = [];
+      do {
+        context.font = `700 ${titleSize}px "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif`;
+        titleLines = breakCoverTitle(context, title, 1270);
+        if (titleLines.length > 3) titleSize -= 2;
+      } while (titleLines.length > 3 && titleSize > 48);
+
+      context.fillStyle = selectedCoverStyle.palette[1];
+      context.textAlign = "left";
+      context.textBaseline = "alphabetic";
+      const lineHeightPx = Math.round(titleSize * 1.34);
+      const titleStartY = Math.max(330, 515 - ((titleLines.length - 1) * lineHeightPx) / 2);
+      titleLines.forEach((line, index) => context.fillText(line, 150, titleStartY + index * lineHeightPx));
+
+      if (logo) {
+        const maxLogoWidth = 360;
+        const maxLogoHeight = 128;
+        const logoScale = Math.min(maxLogoWidth / logo.naturalWidth, maxLogoHeight / logo.naturalHeight, 1.6);
+        const logoWidth = Math.round(logo.naturalWidth * logoScale);
+        const logoHeight = Math.round(logo.naturalHeight * logoScale);
+        const logoX = canvas.width - 100 - logoWidth;
+        const logoY = 74;
+        context.fillStyle = "rgba(255,255,255,.94)";
+        context.beginPath();
+        context.roundRect(logoX - 28, logoY - 22, logoWidth + 56, logoHeight + 44, 18);
+        context.fill();
+        context.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
+      }
+
+      context.font = `600 42px "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif`;
+      context.textAlign = "right";
+      context.fillStyle = selectedCoverStyle.palette[1];
+      context.fillText(coverSignature, canvas.width - 105, 912);
+      const signatureWidth = context.measureText(coverSignature).width;
+      context.fillStyle = selectedCoverStyle.palette[2];
+      context.fillRect(canvas.width - 105 - signatureWidth - 72, 893, 48, 4);
+
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("PNG 导出失败")), "image/png"));
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${safeDownloadName(article.title)}-2350x1000.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      notify("最终封面已生成：标题、唐淼署名与官方 Logo 均由本机精确合成");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "封面合成失败，请检查图片文件");
     }
   }
 
@@ -981,7 +1140,7 @@ export default function Home() {
           {stage === "内容" && <><div className="context-head"><span>文章大纲</span><small>{outline.length + 1} 个层级</small></div><div className="article-outline"><button className="outline-title" onClick={() => { setSelected({ index: -1, type: "title" }); articleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><i>题</i><span>{article.title}</span></button>{outline.map((item) => <button key={`${item.type}-${item.index}`} className={item.type === "subheading" ? "outline-subheading" : ""} onClick={() => jumpToBlock(item.index, item.type)}><i>{item.type === "heading" ? "章" : "节"}</i><span>{item.text}</span></button>)}</div></>}
           {stage === "编排" && <><div className="context-head"><span>整稿策略</span><small>内容不变，只改章法</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前建议：均衡</b><small>保留两次阅读停顿，列表收束在末段。</small></p></div></>}
           {stage === "视觉" && <><div className="context-head"><span>Markdown 版式</span><small>一键换骨，不动正文</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].palette.accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
-          {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><b>{label.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>; })}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制封面制作指令</button></>}
+          {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><b>{label.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>; })}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制素材准备任务</button></>}
           {stage === "组件" && <><div className="context-head"><span>语义组件</span><small>点击或拖到画布</small></div><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索章节、观点、数据"/></label><div className="component-shelf">{filteredComponents.map((item) => <button key={item.kind} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><b>{item.kind}</b><small>{item.detail}</small></p><Icon name="plus" size={14}/></button>)}</div></>}
           {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>复制标题</b><small>{article.title.length}/64 字</small></span><Icon name="copy" size={15}/></button><button onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>复制作者</b><small>{article.author.length}/8 字</small></span><Icon name="copy" size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul></>}
         </div>
@@ -1026,7 +1185,7 @@ export default function Home() {
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
           {stage === "封面" ? <section className="cover-workbench" onClick={(event) => event.stopPropagation()} style={{ "--cover-paper": selectedCoverStyle.palette[0], "--cover-ink": selectedCoverStyle.palette[1], "--cover-accent": selectedCoverStyle.palette[2] } as React.CSSProperties}>
-            <header className="cover-workbench-head"><div><span>Logo First / V4</span><h2>{selectedCoverLabel.name}</h2><p>{selectedCoverStyle.direction}</p></div><strong><b>{coverRecommendations.find((item) => item.style.id === selectedCoverStyle.id)?.score ?? 88}</b><small>匹配度</small></strong></header>
+            <header className="cover-workbench-head"><div><span>Asset → Compose / V5</span><h2>{selectedCoverLabel.name}</h2><p>{selectedCoverStyle.direction}</p></div><strong><b>{coverRecommendations.find((item) => item.style.id === selectedCoverStyle.id)?.score ?? 88}</b><small>匹配度</small></strong></header>
             <div className="cover-concept-canvas" aria-label={`${selectedCoverLabel.name}封面构图草图`}>
               <span className="cover-concept-index">COVER / {String(coverStyles.findIndex((item) => item.id === selectedCoverStyle.id) + 1).padStart(2, "0")}</span>
               <div className="cover-concept-title"><small>{coverProfile.subject} · {coverProfile.tone}</small><h3>{article.title}</h3><p>{selectedCoverLabel.short} / 最终成品必须准确排印此标题</p></div>
@@ -1034,9 +1193,9 @@ export default function Home() {
               <div className="cover-signature" aria-label={`固定署名：${coverSignature}`}><i/>{coverSignature}</div>
               <div className="cover-safe-line" aria-hidden="true"><span>标题安全线</span></div>
             </div>
-            <div className="cover-protocol-strip cover-logo-first-strip"><header><span>先拿 Logo，再做封面</span><small>官网优先，认证公众号补充；没有原图便停止</small></header><div>{coverHarness.steps.map((step, index) => <p key={step}><em>0{index + 1}</em><span><b>{index === 0 ? "取得原图" : index === 1 ? "确认素材" : "生成合成"}</b><small>{step}</small></span></p>)}</div></div>
+            <div className="cover-protocol-strip cover-logo-first-strip"><header><span>素材与成品彻底分离</span><small>缺少真实文件，合成按钮不会解锁</small></header><div>{coverHarness.steps.map((step, index) => <p key={step}><em>0{index + 1}</em><span><b>{index === 0 ? "取得素材包" : index === 1 ? "导入真实文件" : "本机精确合成"}</b><small>{step}</small></span></p>)}</div></div>
             <div className="cover-analysis-grid"><div><span>构图</span><p>{selectedCoverStyle.composition}</p></div><div><span>材质与光线</span><p>{selectedCoverStyle.texture}</p></div><div><span>风格标签</span><p>{coverProtocol.styleTags.join(" · ")}</p></div><div><span>避坑</span><p>{selectedCoverStyle.avoid}</p></div></div>
-            <footer className="cover-workbench-foot"><div className="cover-palette"><span>配色</span>{selectedCoverStyle.palette.map((color) => <i key={color} style={{ background: color }} title={color}/>)}</div><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制封面制作指令</button></footer>
+            <footer className="cover-workbench-foot"><div className="cover-palette"><span>配色</span>{selectedCoverStyle.palette.map((color) => <i key={color} style={{ background: color }} title={color}/>)}</div><div className="cover-workbench-actions"><button className="secondary" onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制素材准备任务</button><button onClick={() => { setInspector("封面"); notify("请在右侧导入底图和官方 Logo 原图"); }}><Icon name="assets" size={15}/>导入素材并合成</button></div></footer>
           </section> : <div className="paper-frame">
             <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
             <article lang="zh-CN" className={`article-page layout-${layoutMode} md-style-${markdownStyle} font-${fontProfile} ${darkPreview ? "wechat-dark-preview" : ""} ${focusMode && selected ? "focus-active" : ""}`} data-md-style={markdownStyle} ref={articleRef}>
@@ -1093,13 +1252,19 @@ export default function Home() {
             <div className="cover-company-input"><input id="cover-company" value={effectiveCoverCompany} placeholder="例如：中国天辰工程有限公司" onChange={(event) => setCoverCompanyOverride({ source: coverCompanySource, value: event.target.value })}/><button onClick={() => setCoverCompanyOverride(null)}>重置识别</button></div>
             <p><b>{effectiveCoverCompany ? `先去找：${effectiveCoverCompany}` : "当前按非企业文章处理"}</b><span>{effectiveCoverCompany ? `优先从官网${coverHarness.company.officialDomainHints.length ? `（${coverHarness.company.officialDomainHints.join(" / ")}）` : ""}复制 Logo 图片；官网没有可用原图，再去认证微信公众号。文件拿不到就停止，不让模型自己画。` : "不会擅自添加任何企业 Logo；若文章实际写某家企业，请先补全企业名称。"}</span></p>
           </section>
-          <section className="inspector-section cover-logo-workflow-card">
-            <div className="section-heading"><div><span>封面制作顺序</span><small>只有三步，不让执行者自由发挥</small></div><span className="protocol-badge">LOGO FIRST</span></div>
-            <ol>{coverHarness.steps.map((step, index) => <li key={step}><i>0{index + 1}</i><span><b>{index === 0 ? "去官方渠道找图" : index === 1 ? "把 Logo 变成素材" : "生成并完成合成"}</b><small>{step}</small></span></li>)}</ol>
-            {effectiveCoverCompany && <p><Icon name="warning" size={15}/><span>只有 Logo 图片文件已经存在于任务附件或本地路径中，才允许调用生图工具。</span></p>}
+          <section className="inspector-section cover-composer-card">
+            <div className="section-heading"><div><span>本机封面合成</span><small>真实素材缺一项，便不生成</small></div><span className={`protocol-badge ${canComposeCover ? "ready" : ""}`}>{canComposeCover ? "READY" : "LOCKED"}</span></div>
+            <button className="cover-asset-task" onClick={copyCoverPrompt}><Icon name="copy" size={15}/><span><b>复制素材准备任务</b><small>Agent 只负责返回官方 Logo 与无字底图</small></span></button>
+            <div className="cover-asset-inputs">
+              <label className={coverBackgroundFile ? "ready" : ""} htmlFor="cover-background-file"><input id="cover-background-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; setCoverBackgroundAsset(file ? { identity: coverBackgroundIdentity, file } : null); }}/><Icon name="assets" size={16}/><span><b>导入无字底图</b><small>{coverBackgroundFile?.name ?? "PNG / JPG / WebP，必需"}</small></span><em>{coverBackgroundFile ? "已导入" : "必需"}</em></label>
+              {effectiveCoverCompany && <label className={coverLogoFile ? "ready" : ""} htmlFor="cover-logo-file"><input id="cover-logo-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; setCoverLogoAsset(file ? { company: effectiveCoverCompany.trim(), file } : null); }}/><Icon name="brand" size={16}/><span><b>导入官方 Logo 原图</b><small>{coverLogoFile?.name ?? "PNG / SVG / JPG / WebP，必需"}</small></span><em>{coverLogoFile ? "已导入" : "必需"}</em></label>}
+            </div>
+            {effectiveCoverCompany && <label className="cover-logo-source" htmlFor="cover-logo-source"><span>官方来源网址</span><input id="cover-logo-source" type="url" value={coverLogoSource} placeholder={coverHarness.company.officialDomainHints[0] ? `https://${coverHarness.company.officialDomainHints[0]}/…` : "https://企业官网/Logo来源页"} onChange={(event) => setCoverLogoSourceEntry({ company: effectiveCoverCompany.trim(), value: event.target.value })}/><small className={coverLogoSource && coverLogoSourceValid ? "valid" : ""}>{coverLogoSource ? (coverLogoSourceValid ? "来源格式已通过，仍请人工核对图形版本" : "网址无效，或与已知官网域名不一致") : "用于留存官方来源；搜索结果页与素材站不通过"}</small></label>}
+            <button className="cover-compose-button" disabled={!canComposeCover} onClick={composeFinalCover}><Icon name="publish" size={16}/>生成最终封面 PNG</button>
+            <p><Icon name="check" size={15}/><span>标题和“{coverSignature}”由本机 Canvas 逐字排印；Logo 直接读取上传原图，只做等比缩放，不经过生图模型。</span></p>
           </section>
           <section className="inspector-section cover-recommend-section"><div className="section-heading"><div><span>首选方案</span><small>推荐不是审判，理由必须说得明白</small></div><span className="suggestion-count">03</span></div><div className="cover-recommend-list">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><strong>{label.name}</strong><small>{item.reason.replace(item.style.name, label.name)}</small></span><b>{item.score}</b></button>; })}</div></section>
-          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverLabel.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>标题</dt><dd>最终成品必须逐字排印“{article.title}”，并由确定性文字层完成。</dd></div><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制封面制作指令</button></section>
+          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverLabel.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>标题</dt><dd>最终成品必须逐字排印“{article.title}”，并由确定性文字层完成。</dd></div><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制素材准备任务</button></section>
           <section className="inspector-section cover-library"><div className="section-heading cover-library-heading"><div><span>视觉语言索引</span><small>24 种媒介气质，不是 24 张换色皮肤</small></div><span className="style-count">24</span></div><div className="cover-category-filter" aria-label="筛选封面视觉语言">{coverStyleCategories.map((category) => { const count = category === "全部" ? coverStyles.length : coverStyles.filter((item) => item.category === category).length; return <button key={category} className={coverCategory === category ? "active" : ""} aria-pressed={coverCategory === category} onClick={() => setCoverCategory(category)}><span>{category}</span><em>{String(count).padStart(2, "0")}</em></button>; })}</div><div className="cover-style-library">{filteredCoverStyles.map((item) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.id); const label = coverStyleLabel(item); return <button key={item.id} className={selectedCoverStyle.id === item.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.id} onClick={() => setCoverStyleId(item.id)}><CoverStyleSpecimen style={item} index={styleIndex}/><span className="cover-style-library-copy"><span><em>{item.category}</em><small>{String(styleIndex + 1).padStart(2, "0")}</small></span><b>{label.name}</b><p>{label.short}</p></span></button>; })}</div></section>
         </div>}
 
