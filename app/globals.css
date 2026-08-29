@@ -6516,6 +6516,9 @@ input:focus-visible {
 }
 .source-actions .paste-action:hover { background: var(--cn-navy-800); }
 .source-actions .clear-action { border-color: transparent; color: var(--cn-red-700); box-shadow: inset 0 -1px rgba(197,50,56,.34); }
+.source-actions .analyze-action { border-color: var(--cn-red-600); background: var(--cn-red-600); color: #fff; box-shadow: none; }
+.source-actions .analyze-action:hover { border-color: var(--cn-red-700); background: var(--cn-red-700); color: #fff; }
+.source-actions .source-action:disabled { cursor: not-allowed; opacity: .48; transform: none; box-shadow: none; }
 .source-actions .import-file { border-color: var(--cn-line-strong); background: #fff; color: var(--cn-navy-700); }
 .source-close { border-color: var(--cn-line-strong); color: var(--cn-navy-800); }
 .source-drawer footer button { background: var(--cn-red-600); color: #fff; }
