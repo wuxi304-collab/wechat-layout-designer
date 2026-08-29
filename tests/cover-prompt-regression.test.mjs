@@ -54,6 +54,40 @@ test("title entity wins over descriptive prose and resolves to the canonical com
   assert.equal(detectCompanyName("材料选择为什么重要", markdown), null);
 });
 
+test("industry headlines with dates and production data never become imaginary companies", async () => {
+  const title = "不锈钢8月排产创历史新高，钢厂到底在赌什么？";
+  const markdown = "8月钢厂排产与产量继续上升，多家企业正在观察库存和价格。";
+  const profile = analyzeCoverContent(title, markdown);
+  const style = coverStyles.find((item) => item.id === "minimal-information");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.ok(style);
+  assert.equal(detectCompanyName(title, markdown), null);
+  assert.equal(profile.companyName, null);
+  assert.equal(profile.isEnterprise, false);
+  const prompt = buildCoverPrompt(style, title, profile);
+  assert.match(prompt, /文章未识别到具体企业主体/);
+  assert.match(prompt, /行业、品类、月份、排产、价格、产量与问题句都不是企业名称/);
+  assert.match(prompt, /画面中不得出现任何企业 Logo/);
+  assert.doesNotMatch(prompt, /企业：不锈钢8月排产创历史新高/);
+  assert.doesNotMatch(prompt, /打开不锈钢8月排产创历史新高官方网站/);
+  assert.match(page, /coverProfile\.companyConfidence === "high"/);
+  assert.match(page, /候选待确认/);
+  assert.match(page, /采用候选/);
+});
+
+test("medium-confidence brand prefixes require confirmation before Logo workflow", () => {
+  const title = "富钢特板：25万吨之外，它真正想做的是一门更难的生意";
+  const markdown = "这家公司正在扩建工厂，主营特种钢板。";
+  const profile = analyzeCoverContent(title, markdown);
+  const style = coverStyles.find((item) => item.id === "hyperreal");
+  assert.ok(style);
+  assert.equal(profile.companyName, "富钢特板");
+  assert.equal(profile.companyConfidence, "medium");
+  assert.equal(profile.isEnterprise, false);
+  assert.doesNotMatch(buildCoverPrompt(style, title, profile), /企业：富钢特板/);
+  assert.match(buildCoverPrompt(style, title, profile, "富钢特板"), /企业：富钢特板/);
+});
+
 test("China Tianchen final task blocks generated logos and requires final composition", () => {
   const title = "中国天辰：很多化工项目用什么钢，在询价之前其实已经决定了";
   const profile = analyzeCoverContent(title, "要把它理解成一家大型化工设计院。材料与制造。" );

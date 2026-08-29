@@ -572,7 +572,10 @@ export default function Home() {
   const article = useMemo(() => parseArticle(safeMarkdown), [safeMarkdown]);
   const coverProfile = useMemo(() => analyzeCoverContent(article.title, safeMarkdown), [article.title, safeMarkdown]);
   const coverCompanySource = `${article.title}\u0000${coverProfile.companyName ?? ""}`;
-  const effectiveCoverCompany = coverCompanyOverride?.source === coverCompanySource ? coverCompanyOverride.value : coverProfile.companyName ?? "";
+  const suggestedCoverCompany = coverProfile.companyConfidence === "medium" ? coverProfile.companyName ?? "" : "";
+  const autoConfirmedCoverCompany = coverProfile.companyConfidence === "high" ? coverProfile.companyName ?? "" : "";
+  const effectiveCoverCompany = coverCompanyOverride?.source === coverCompanySource ? coverCompanyOverride.value : autoConfirmedCoverCompany;
+  const hasPendingCoverCompany = !effectiveCoverCompany.trim() && Boolean(suggestedCoverCompany);
   const coverRecommendations = useMemo(() => recommendCoverStyles(article.title, safeMarkdown), [article.title, safeMarkdown]);
   const selectedCoverStyle = useMemo(() => coverStyles.find((item) => item.id === coverStyleId) ?? coverRecommendations[0].style, [coverRecommendations, coverStyleId]);
   const selectedCoverLabel = coverStyleLabel(selectedCoverStyle);
@@ -1257,10 +1260,10 @@ export default function Home() {
         {inspector === "封面" && <div className="inspector-content cover-inspector">
           <section className="cover-reading-card"><header><span><Icon name="spark" size={15}/>文章画像</span><small>已分析标题与正文语义</small></header><div><b>{coverProfile.subject}</b><b>{coverProfile.tone}</b><b>{coverProfile.intent}</b></div><p>{coverProfile.signals.length ? `识别线索：${coverProfile.signals.join("、")}` : "当前稿件线索较少，先按深度观点类内容推荐。"}</p></section>
           <section className={`cover-brand-card ${effectiveCoverCompany ? "enterprise" : "generic"}`}>
-            <div className="section-heading"><div><span>企业 Logo 素材</span><small>找到原图，才开始生成</small></div><span className="cover-brand-state">{effectiveCoverCompany ? "企业已识别" : "未识别企业"}</span></div>
-            <label htmlFor="cover-company"><span>企业主体（自动识别，可修正）</span><small>企业稿请填写工商或品牌正式名称</small></label>
-            <div className="cover-company-input"><input id="cover-company" value={effectiveCoverCompany} placeholder="例如：中国天辰工程有限公司" onChange={(event) => setCoverCompanyOverride({ source: coverCompanySource, value: event.target.value })}/><button onClick={() => setCoverCompanyOverride(null)}>重置识别</button></div>
-            <p><b>{effectiveCoverCompany ? `先去找：${effectiveCoverCompany}` : "当前按非企业文章处理"}</b><span>{effectiveCoverCompany ? `优先从官网${coverHarness.company.officialDomainHints.length ? `（${coverHarness.company.officialDomainHints.join(" / ")}）` : ""}复制 Logo 图片；官网没有可用原图，再去认证微信公众号。文件拿不到就停止，不让模型自己画。` : "不会擅自添加任何企业 Logo；若文章实际写某家企业，请先补全企业名称。"}</span></p>
+            <div className="section-heading"><div><span>企业 Logo 素材</span><small>只有明确企业，才进入 Logo 流程</small></div><span className="cover-brand-state">{effectiveCoverCompany ? "企业已确认" : hasPendingCoverCompany ? "候选待确认" : "非企业文章"}</span></div>
+            <label htmlFor="cover-company"><span>企业主体（高置信度自动识别）</span><small>行业词、月份、排产、价格不会被当成企业</small></label>
+            <div className="cover-company-input"><input id="cover-company" value={effectiveCoverCompany} placeholder={hasPendingCoverCompany ? `候选：${suggestedCoverCompany}（确认后启用 Logo）` : "例如：中国天辰工程有限公司"} onChange={(event) => setCoverCompanyOverride({ source: coverCompanySource, value: event.target.value })}/>{hasPendingCoverCompany ? <button onClick={() => setCoverCompanyOverride({ source: coverCompanySource, value: suggestedCoverCompany })}>采用候选</button> : <button onClick={() => setCoverCompanyOverride(null)}>重置识别</button>}</div>
+            <p><b>{effectiveCoverCompany ? `先去找：${effectiveCoverCompany}` : hasPendingCoverCompany ? `检测到候选：${suggestedCoverCompany}` : "当前按非企业文章处理"}</b><span>{effectiveCoverCompany ? `优先从官网${coverHarness.company.officialDomainHints.length ? `（${coverHarness.company.officialDomainHints.join(" / ")}）` : ""}复制 Logo 图片；官网没有可用原图，再去认证微信公众号。文件拿不到就停止，不让模型自己画。` : hasPendingCoverCompany ? "候选未经确认不会写入提示词，也不会触发 Logo 门禁；若它确实是企业，请点击“采用候选”。" : "不会擅自添加任何企业 Logo；若文章实际写某家企业，请手动填写正式名称。"}</span></p>
           </section>
           <section className="inspector-section cover-composer-card">
             <div className="section-heading"><div><span>完整封面任务</span><small>Agent 必须生成、合成、校验后一次交付</small></div><span className="protocol-badge ready">V6 FINAL</span></div>

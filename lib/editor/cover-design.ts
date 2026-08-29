@@ -192,9 +192,14 @@ export function resolveCompanyEntity(title: string, markdown: string): CompanyRe
     };
   }
 
-  const titlePrefix = cleanCompanyCandidate(title.split(/[：:，,｜|—]/)[0] ?? "");
+  // A brand-led headline normally declares the subject with a colon. Commas and
+  // dashes are editorial punctuation, so treating everything before them as a
+  // company turns industry headlines such as “不锈钢8月排产创历史新高，…” into
+  // imaginary enterprises.
+  const titlePrefix = cleanCompanyCandidate(title.split(/[：:｜|]/)[0] ?? "");
   const hasEnterpriseContext = /公司|集团|企业|上市|股份|成立于|总部|创始人|董事长|产能|工厂|主营|营收/.test(markdown);
-  const looksLikeNamedEntity = titlePrefix.length >= 2 && titlePrefix.length <= 12 && !/中国|行业|贸易商|企业|市场|未来|为什么|如何|真相|标准/.test(titlePrefix);
+  const genericIndustryPrefix = /中国|行业|贸易商|企业|市场|未来|为什么|如何|真相|标准|不锈钢|钢铁|钢厂|排产|产量|价格|成本|利润|供需|库存|月份|季度|创新高|新高|同比|环比|\d{1,4}(?:年|月|季度)?/;
+  const looksLikeNamedEntity = titlePrefix.length >= 2 && titlePrefix.length <= 12 && !genericIndustryPrefix.test(titlePrefix);
   return hasEnterpriseContext && looksLikeNamedEntity ? {
     canonicalName: titlePrefix,
     matchedText: titlePrefix,
@@ -226,7 +231,9 @@ export function analyzeCoverContent(title: string, markdown: string): CoverArtic
     companyConfidence: company?.confidence ?? null,
     companyReason: company?.reason ?? null,
     officialDomains: company?.officialDomains ?? [],
-    isEnterprise: Boolean(company),
+    // Medium confidence is only a suggestion for the editor. It must never
+    // activate the Logo workflow until a human confirms the entity.
+    isEnterprise: company?.confidence === "high",
     category: primary?.matched.length ? primary.category : "general",
   };
 }
@@ -296,7 +303,7 @@ function selectVisualMetaphor(title: string, profile: CoverArticleProfile) {
   return "一个与文章主命题直接相关的实物形成唯一视觉锚点，借尺度、方向或留白制造问题感，不添加泛化符号。";
 }
 
-export function buildCoverProtocol(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName): CoverPromptProtocol {
+export function buildCoverProtocol(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyConfidence === "high" ? profile.companyName : null): CoverPromptProtocol {
   const base = protocolByCategory[style.category];
   const visualAnchor = companyName
     ? `${companyName}官网或认证公众号中的真实厂房、设备、产品影像，只选择其中一个作为主锚点`
@@ -356,7 +363,7 @@ export function buildCoverHarness(title: string, companyName: string | null) {
   };
 }
 
-export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyName) {
+export function buildCoverPrompt(style: CoverStyle, title: string, profile: CoverArticleProfile, companyName: string | null = profile.companyConfidence === "high" ? profile.companyName : null) {
   const resolvedTitle = title === "未命名文章" ? "" : title.trim();
   const protocol = buildCoverProtocol(style, title, profile, companyName);
   const officialDomains = companyName ? recordForCompany(companyName)?.officialDomains ?? profile.officialDomains : [];
@@ -372,6 +379,7 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
   ] : [
     "【阶段 1｜Logo 判断】",
     "文章未识别到具体企业主体：本封面不放企业 Logo，也不得凭空创造品牌标志。",
+    "行业、品类、月份、排产、价格、产量与问题句都不是企业名称；不得把标题片段当企业，不得自行搜索同名公司或补放 Logo。",
   ];
 
   return [
@@ -385,7 +393,9 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
     ...brandSteps,
     "【阶段 2｜生成内部无字底图】",
     "生成一张 2350×1000、2.35:1 的微信公众号横幅底图。底图中禁止出现标题、署名、Logo、占位框、乱码、伪中文和任何文字。",
-    "左侧约 58% 保持低纹理、可读的标题安全区；右上保留 Logo 安全区；右下保留署名安全区。只设计光影、材质和主体关系，不画边框或文字占位符。",
+    companyName
+      ? "左侧约 58% 保持低纹理、可读的标题安全区；右上保留 Logo 安全区；右下保留署名安全区。只设计光影、材质和主体关系，不画边框或文字占位符。"
+      : "左侧约 58% 保持低纹理、可读的标题安全区；右上不预留也不放置 Logo，右下保留署名安全区。只设计光影、材质和主体关系，不画边框或文字占位符。",
     "这张底图是内部临时资产：不得在回复中单独展示、附加或称为完成封面。",
     "【画面设计】",
     `内容画像：${profile.subject} / ${profile.tone} / ${profile.intent}。`,
