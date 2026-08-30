@@ -36,6 +36,10 @@ type IconName =
   | "spark" | "phone" | "desktop" | "undo" | "redo" | "copy" | "publish"
   | "chevron" | "close" | "brush" | "history" | "warning" | "search" | "plus" | "moon";
 
+function isGitHubPagesRuntime() {
+  return typeof window !== "undefined" && window.location.hostname.endsWith(".github.io");
+}
+
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
     brand: <><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></>,
@@ -648,6 +652,10 @@ export default function Home() {
 
   useEffect(() => {
     if (inspector !== "规范") return;
+    if (isGitHubPagesRuntime()) {
+      const timer = window.setTimeout(() => setWechatStatus({ configured: false, connected: false, mode: "静态托管", appId: null, message: "GitHub Pages 版不含公众号服务端接口；排版与复制功能不受影响" }), 0);
+      return () => window.clearTimeout(timer);
+    }
     fetch("/api/wechat")
       .then((response) => response.json())
       .then((payload) => setWechatStatus(payload))
@@ -1099,6 +1107,11 @@ export default function Home() {
   }
 
   async function checkWechatConnection() {
+    if (isGitHubPagesRuntime()) {
+      setWechatStatus({ configured: false, connected: false, mode: "静态托管", appId: null, message: "GitHub Pages 版不含公众号服务端接口；排版与复制功能不受影响" });
+      notify("静态版不连接公众号服务端，排版与复制功能正常可用");
+      return;
+    }
     setCheckingWechat(true);
     try {
       const response = await fetch("/api/wechat?probe=1", { cache: "no-store" });
