@@ -335,20 +335,20 @@ export function buildCoverHarness(title: string, companyName: string | null) {
   const resolvedTitle = title === "未命名文章" ? "" : normalizeCoverOcrText(title);
   const companyRecord = companyName ? recordForCompany(companyName) : undefined;
   return {
-    workflowVersion: "6.0",
+    workflowVersion: "7.0",
     rule: "FINAL_FILE_ONLY",
     company: {
       company: companyName,
       officialDomainHints: companyRecord?.officialDomains ?? [],
     },
     steps: companyName ? [
-      "开始前确认具备联网取 Logo、生无字底图和 Canvas / Sharp / ImageMagick 精确合成能力；缺一项就停止",
-      "取得官方 Logo 原图并生成无字底图后，用确定性工具原样放 Logo、逐字排印标题与署名",
-      "核验尺寸和锁定文字，只交付 final-cover.png；中间底图不得作为完成结果返回",
+      `先取得${companyName}官网或认证公众号正在使用的真实 Logo 文件，取不到就停止`,
+      "生成无字底图，再用代码原样放 Logo，并逐字排印标题与署名",
+      "核验尺寸、标题、唐淼和 Logo，只交付 final-cover.png",
     ] : [
-      "开始前确认具备生无字底图和 Canvas / Sharp / ImageMagick 精确合成能力；缺一项就停止",
-      "生成无字底图后，用确定性工具逐字排印锁定标题与署名，图像模型不负责写字",
-      "核验尺寸和锁定文字，只交付 final-cover.png；中间底图不得作为完成结果返回",
+      "文章没有明确企业主体，不查找也不添加 Logo",
+      "生成无字底图，再用代码逐字排印标题与署名",
+      "核验尺寸、标题和唐淼，只交付 final-cover.png",
     ],
     requiredAssets: companyName ? ["BACKGROUND_IMAGE", "OFFICIAL_LOGO_IMAGE"] : ["BACKGROUND_IMAGE"],
     requiredCapabilities: companyName ? ["WEB_RETRIEVAL", "IMAGE_GENERATION", "DETERMINISTIC_COMPOSITOR", "FILE_ATTACHMENT"] : ["IMAGE_GENERATION", "DETERMINISTIC_COMPOSITOR", "FILE_ATTACHMENT"],
@@ -367,57 +367,35 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
   const resolvedTitle = title === "未命名文章" ? "" : title.trim();
   const protocol = buildCoverProtocol(style, title, profile, companyName);
   const officialDomains = companyName ? recordForCompany(companyName)?.officialDomains ?? profile.officialDomains : [];
-  const brandSteps = companyName ? [
-    "【阶段 1｜先取得官方 Logo 原图】",
-    `企业：${companyName}`,
-    ...(officialDomains.length ? [`官网线索：${officialDomains.join("、")}`] : []),
-    `1. 打开${companyName}官方网站，下载当前页面实际使用的 Logo 图片；官网没有可用图片时，再从该企业认证微信公众号头像、菜单页或官方文章页取得。`,
-    "2. 必须先确认真实 PNG、SVG、WebP 或 JPG 文件已存在于附件或本地路径。网页链接、企业名称、文字描述和搜索缩略图都不算取得文件。",
-    "3. 不得让图像模型猜、画、描摹或仿制 Logo；不得用百科、自媒体、素材站或搜索结果缩略图代替官方文件。",
-    "4. 找不到官方 Logo 原图时立即停止，只回复“未取得官方 Logo 文件，请用户上传”；不得生成底图或伪造封面。",
-    "5. 记录 Logo 官方来源网址，最终随成品附一行来源供用户复核。",
-  ] : [
-    "【阶段 1｜Logo 判断】",
-    "文章未识别到具体企业主体：本封面不放企业 Logo，也不得凭空创造品牌标志。",
-    "行业、品类、月份、排产、价格、产量与问题句都不是企业名称；不得把标题片段当企业，不得自行搜索同名公司或补放 Logo。",
-  ];
+  const logoTask = companyName
+    ? [
+        `企业：${companyName}${officialDomains.length ? `；官网线索：${officialDomains.join("、")}` : ""}。`,
+        "先从企业官网取得页面实际使用的 Logo 原图；官网没有可下载文件时，再取认证公众号头像或官方文章页素材。必须得到本地 PNG / SVG / WebP / JPG 文件后才能继续。",
+        "取不到真实文件就停止并请用户上传。禁止用搜索缩略图，禁止让模型猜、画、描摹或仿制 Logo。",
+      ]
+    : ["文章没有明确企业主体：不查找、不预留、不添加任何企业 Logo。行业词、月份、排产、价格和标题片段都不是企业名。"];
 
   return [
-    "【微信公众号成品封面任务｜Final Cover V6】",
-    "你是同时具备素材检索、生图与确定性排版能力的制作 Agent。最终只交付一张完成封面 PNG；无字底图只是内部中间文件，禁止把它作为结果返回。",
-    "【开始前能力门禁｜先检查，再调用任何生图工具】",
+    "【微信公众号成品封面｜V7 精准版】",
+    "只交付一张 final-cover.png，2350×1000（2.35:1）。底图是中间文件，不能作为结果。",
+    "【锁定文字】",
+    resolvedTitle ? `主标题：${resolvedTitle}` : "缺少主标题：停止并向用户索取，不得自拟。",
+    `右下署名：${coverSignature}`,
+    "【1｜Logo】",
+    ...logoTask,
+    "【2｜无字底图】",
+    `内容：${profile.subject} / ${profile.tone} / ${profile.intent}。视觉：${protocol.template}，${style.promptStyle}。`,
+    `主体：${protocol.visualAnchor}。隐喻：${protocol.visualMetaphor}`,
+    `构图：${style.composition}；左侧约 58% 为低纹理标题区，右下留署名区。材质：${style.texture}。配色：${style.palette.join("、")}。`,
+    "图像模型只生成无字底图：不得出现文字、Logo、占位框、乱码、样机或界面。",
+    "【3｜确定性合成】",
+    "底图生成后，必须用 Canvas / SVG / Sharp / ImageMagick 等确定性工具排字；图像模型不得书写标题和署名。标题按语义分 2—3 行，署名保持一行。",
     companyName
-      ? "必须同时具备：联网取得官方 Logo 原图、生成无字底图、使用 Canvas / SVG / Sharp / ImageMagick 精确合成、附加最终 PNG 文件四项能力。"
-      : "必须同时具备：生成无字底图、使用 Canvas / SVG / Sharp / ImageMagick 精确合成、附加最终 PNG 文件三项能力。",
-    "缺少任何一项能力时，立即停止并说明“当前环境无法完成确定性封面合成”；此时禁止先生成或返回底图。不得把本任务直接交给只会生图、不会代码合成的模型。",
-    ...brandSteps,
-    "【阶段 2｜生成内部无字底图】",
-    "生成一张 2350×1000、2.35:1 的微信公众号横幅底图。底图中禁止出现标题、署名、Logo、占位框、乱码、伪中文和任何文字。",
-    companyName
-      ? "左侧约 58% 保持低纹理、可读的标题安全区；右上保留 Logo 安全区；右下保留署名安全区。只设计光影、材质和主体关系，不画边框或文字占位符。"
-      : "左侧约 58% 保持低纹理、可读的标题安全区；右上不预留也不放置 Logo，右下保留署名安全区。只设计光影、材质和主体关系，不画边框或文字占位符。",
-    "这张底图是内部临时资产：不得在回复中单独展示、附加或称为完成封面。",
-    "【画面设计】",
-    `内容画像：${profile.subject} / ${profile.tone} / ${profile.intent}。`,
-    `风格：${protocol.template}；${style.promptStyle}。`,
-    `画面主体：${protocol.visualAnchor}。`,
-    `表达方式：${protocol.visualMetaphor}`,
-    `构图：${style.composition}。`,
-    `材质与光线：${style.texture}。`,
-    `主色：${style.palette.join("、")}，整体最多三种主色。`,
-    "【阶段 3｜确定性代码合成】",
-    resolvedTitle ? `主标题：“${resolvedTitle}”` : "缺少主标题：停止任务并向用户索取，不得自拟。",
-    `固定署名：“${coverSignature}”`,
-    "必须在生图结束后继续执行代码合成，不能停在底图阶段。使用 Canvas、SVG、Sharp、ImageMagick 或等价确定性工具将文字叠加到底图；图像模型不得书写标题和署名。",
-    "画布固定为 2350×1000。标题放在左侧低纹理安全区，使用清晰中文编辑字体，按语义分为 2—3 行；不得改字、删字、换词、截断或另加副标题。",
-    `右下角固定排印“${coverSignature}”，保持一行；必须逐字读取字符串，禁止凭记忆输入，“淼”不得替换为“森”或其他形近字。`,
-    companyName ? "将已取得的官方 Logo 原图作为独立图层放在右上安全区，只允许等比缩放与裁去透明空边，不换色、不变形、不描边、不重绘。" : "画面中不得出现任何企业 Logo。",
-    "【阶段 4｜成品验证与原子交付】",
-    "1. 确认最终文件真实存在，文件名为 final-cover.png，像素必须为 2350×1000。",
-    resolvedTitle ? `2. 最终画面主标题逐字等于“${resolvedTitle}”，全图只出现这一处主标题。` : "2. 主标题已经补齐并逐字核验。",
-    `3. 右下角逐字等于“${coverSignature}”，保持一行，没有“唐森”等错字。`,
-    companyName ? `4. Logo 确为${companyName}官方原图，图形、标准色和比例未被修改。` : "4. 画面没有企业 Logo。",
-    "5. 不含乱码、无关英文、占位字、样机、界面、设计说明、过程板、四宫格或中间底图。",
-    "只有以上全部通过，才允许回复。最终回复只附 final-cover.png；企业稿另附一行 Logo 官方来源网址。只返回底图、只描述排版步骤或声称稍后合成都属于任务失败。",
+      ? "把取得的 Logo 原文件作为独立图层放在右上，只允许等比缩放和裁透明空边，不换色、不变形、不描边、不重绘。"
+      : "成品中不得出现企业 Logo。",
+    "【4｜交付前核对】",
+    `尺寸 2350×1000；标题逐字等于“${resolvedTitle || "缺少标题"}”；署名逐字等于“${coverSignature}”，其中姓名必须是“唐淼”。`,
+    companyName ? `Logo 必须是${companyName}官方原文件，并附来源网址。` : "确认没有 Logo 和无关品牌标志。",
+    "只返回 final-cover.png；不得返回底图、过程说明、多方案或稍后合成的承诺。",
   ].join("\n");
 }

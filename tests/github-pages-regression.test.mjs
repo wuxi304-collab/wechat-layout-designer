@@ -11,6 +11,7 @@ test("GitHub Pages build is static, path-safe, and deployed by Actions", async (
   ]);
 
   assert.match(config, /base: "\.\/"/);
+  assert.match(config, /\.\/github-pages/);
   assert.match(config, /dist-pages/);
   assert.match(page, /isGitHubPagesRuntime/);
   assert.match(page, /静态版不连接公众号服务端/);

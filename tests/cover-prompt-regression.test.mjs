@@ -10,24 +10,25 @@ import {
   validateCoverTextManifest,
 } from "../lib/editor/cover-design.ts";
 
-test("V6 cover workflow requires atomic delivery of a verified final PNG", async () => {
+test("V7 cover workflow is short, deterministic, and delivers one verified PNG", async () => {
   const source = await readFile(new URL("../lib/editor/cover-design.ts", import.meta.url), "utf8");
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /Final Cover V6/);
-  assert.match(source, /最终只交付一张完成封面 PNG/);
-  assert.match(source, /开始前能力门禁/);
-  assert.match(source, /禁止把它作为结果返回/);
+  assert.match(source, /V7 精准版/);
+  assert.match(source, /只交付一张 final-cover\.png/);
+  assert.match(page, /四步执行：素材、底图、合成、验收/);
+  assert.match(source, /【1｜Logo】/);
+  assert.match(source, /底图是中间文件，不能作为结果/);
   assert.match(source, /final-cover\.png/);
-  assert.match(source, /只返回底图、只描述排版步骤或声称稍后合成都属于任务失败/);
-  assert.match(source, /官方网站/);
-  assert.match(source, /认证微信公众号/);
-  assert.match(source, /不得让图像模型猜、画、描摹或仿制 Logo/);
-  assert.match(source, /确定性代码合成/);
+  assert.match(source, /不得返回底图、过程说明、多方案或稍后合成的承诺/);
+  assert.match(source, /企业官网/);
+  assert.match(source, /认证公众号/);
+  assert.match(source, /禁止让模型猜、画、描摹或仿制 Logo/);
+  assert.match(source, /确定性合成/);
   assert.match(source, /coverAuthorName = "唐淼"/);
   assert.match(source, /四宫格/);
   assert.match(source, /buildCoverProtocol/);
-  assert.match(page, /完整封面任务/);
+  assert.match(page, /精准封面任务/);
   assert.match(page, /本机合成兜底/);
   assert.match(page, /cover-background-file/);
   assert.match(page, /cover-logo-file/);
@@ -65,11 +66,11 @@ test("industry headlines with dates and production data never become imaginary c
   assert.equal(profile.companyName, null);
   assert.equal(profile.isEnterprise, false);
   const prompt = buildCoverPrompt(style, title, profile);
-  assert.match(prompt, /文章未识别到具体企业主体/);
-  assert.match(prompt, /行业、品类、月份、排产、价格、产量与问题句都不是企业名称/);
-  assert.match(prompt, /画面中不得出现任何企业 Logo/);
+  assert.match(prompt, /文章没有明确企业主体/);
+  assert.match(prompt, /行业词、月份、排产、价格和标题片段都不是企业名/);
+  assert.match(prompt, /成品中不得出现企业 Logo/);
   assert.doesNotMatch(prompt, /企业：不锈钢8月排产创历史新高/);
-  assert.doesNotMatch(prompt, /打开不锈钢8月排产创历史新高官方网站/);
+  assert.doesNotMatch(prompt, /企业：不锈钢8月排产创历史新高/);
   assert.match(page, /coverProfile\.companyConfidence === "high"/);
   assert.match(page, /候选待确认/);
   assert.match(page, /采用候选/);
@@ -96,19 +97,21 @@ test("China Tianchen final task blocks generated logos and requires final compos
   const prompt = buildCoverPrompt(style, title, profile);
   assert.match(prompt, /企业：中国天辰工程有限公司/);
   assert.match(prompt, /china-tcc\.com/);
-  assert.match(prompt, /打开中国天辰工程有限公司官方网站/);
-  assert.match(prompt, /认证微信公众号/);
-  assert.match(prompt, /真实 PNG、SVG、WebP 或 JPG 文件已存在/);
-  assert.match(prompt, /固定署名：“钢铁私塾 唐淼”/);
+  assert.match(prompt, /先从企业官网取得页面实际使用的 Logo 原图/);
+  assert.match(prompt, /认证公众号头像或官方文章页素材/);
+  assert.match(prompt, /本地 PNG \/ SVG \/ WebP \/ JPG 文件/);
+  assert.match(prompt, /右下署名：钢铁私塾 唐淼/);
   assert.match(prompt, /图像模型不得书写标题和署名/);
-  assert.match(prompt, /最终回复只附 final-cover\.png/);
-  assert.match(prompt, /Logo 官方来源网址/);
+  assert.match(prompt, /只返回 final-cover\.png/);
+  assert.match(prompt, /并附来源网址/);
   assert.doesNotMatch(prompt, /企业主体：是把它理解成一家大型化工设计院/);
+  assert.ok(prompt.split("\n").length <= 24, "prompt must stay concise");
+  assert.ok(prompt.length < 1800, "prompt must stay focused");
 });
 
-test("V6 harness allows responses only after verified deterministic composition", () => {
+test("V7 harness keeps the three real production steps", () => {
   const harness = buildCoverHarness("中国天辰：项目用钢如何确定", "中国天辰工程有限公司");
-  assert.equal(harness.workflowVersion, "6.0");
+  assert.equal(harness.workflowVersion, "7.0");
   assert.equal(harness.rule, "FINAL_FILE_ONLY");
   assert.equal(harness.steps.length, 3);
   assert.deepEqual(harness.requiredAssets, ["BACKGROUND_IMAGE", "OFFICIAL_LOGO_IMAGE"]);
@@ -116,9 +119,9 @@ test("V6 harness allows responses only after verified deterministic composition"
   assert.deepEqual(harness.stateMachine, ["PRECHECK", "ASSETS_READY", "BACKGROUND_READY", "COMPOSED", "VERIFIED", "DELIVERED"]);
   assert.equal(harness.respondOnlyWhen, "VERIFIED_FINAL_COVER_PNG_EXISTS");
   assert.equal(harness.finalization, "DETERMINISTIC_COMPOSITE_THEN_VERIFY");
-  assert.match(harness.steps[0], /缺一项就停止/);
-  assert.match(harness.steps[1], /确定性工具/);
-  assert.match(harness.steps[2], /中间底图不得作为完成结果返回/);
+  assert.match(harness.steps[0], /真实 Logo 文件/);
+  assert.match(harness.steps[1], /代码原样放 Logo/);
+  assert.match(harness.steps[2], /只交付 final-cover\.png/);
 });
 
 test("non-enterprise task still delivers a finished cover rather than a background", () => {
@@ -127,10 +130,10 @@ test("non-enterprise task still delivers a finished cover rather than a backgrou
   const style = coverStyles.find((item) => item.id === "hyperreal");
   assert.ok(style);
   const prompt = buildCoverPrompt(style, title, profile, null);
-  assert.match(prompt, /最终只交付一张完成封面 PNG/);
-  assert.match(prompt, /主标题：“430正在发生一场比304更残酷的价格战”/);
-  assert.match(prompt, /固定署名：“钢铁私塾 唐淼”/);
-  assert.match(prompt, /最终回复只附 final-cover\.png/);
+  assert.match(prompt, /只交付一张 final-cover\.png/);
+  assert.match(prompt, /主标题：430正在发生一场比304更残酷的价格战/);
+  assert.match(prompt, /右下署名：钢铁私塾 唐淼/);
+  assert.match(prompt, /只返回 final-cover\.png/);
   assert.doesNotMatch(prompt, /只返回一个实际图片文件：无字无 Logo 的横幅底图/);
 });
 
