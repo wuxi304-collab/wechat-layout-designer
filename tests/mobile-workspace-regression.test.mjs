@@ -12,11 +12,19 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(page, /type MobilePane = "workflow" \| "canvas" \| "inspector"/);
   assert.match(page, /className="mobile-dock"/);
   assert.match(page, /mobile-pane-\$\{mobilePane\}/);
+  assert.match(page, /window\.matchMedia\("\(max-width: 840px\)"\)/);
+  assert.match(page, /setWorkspaceView\("final"\)/);
+  assert.match(page, />稿件<\/span>/);
+  assert.match(page, />阅读<\/span>/);
+  assert.match(page, />调整<\/span>/);
   assert.match(css, /\.studio-shell\.mobile-pane-workflow > \.left-panel/);
   assert.match(css, /\.studio-shell\.mobile-pane-canvas > \.canvas-area/);
   assert.match(css, /\.studio-shell\.mobile-pane-inspector > \.inspector-panel/);
   assert.match(css, /height: 100dvh !important/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
+  assert.match(css, /\.studio-final-view \.canvas-stage/);
+  assert.match(css, /\.studio-final-view \.paper-frame/);
+  assert.match(css, /filter: none !important/);
   assert.match(html, /viewport-fit=cover/);
 });
 

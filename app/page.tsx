@@ -650,6 +650,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!window.matchMedia("(max-width: 840px)").matches) return;
+    const timer = window.setTimeout(() => {
+      setPreview("phone");
+      setWorkspaceView("final");
+      setMobilePane("canvas");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 7, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
     return () => window.clearTimeout(timer);
   }, [articleTracking, fontProfile, fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme, titleScale]);
@@ -1185,7 +1195,7 @@ export default function Home() {
           <div><span className="canvas-kicker">{stage === "封面" ? "封面工作台" : "纸上工作台"}</span><strong>{stage === "封面" ? `${selectedCoverLabel.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
           <div className="canvas-controls">
             {stage === "封面" ? <><span className="cover-ratio-tag">微信横幅 2.35:1</span><button onClick={() => { setStage("视觉"); setInspector("样式"); }}>返回正文设计</button></> : <>
-            <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>成稿</button></div>
+            <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>阅读</button></div>
             <div className="quick-typeset-wrap" ref={typesetRef}>
               <button className={`typeset-launch ${typesetOpen ? "selected" : ""}`} aria-label={`文章排版，当前为${currentMarkdownStyle.name}`} title="打开排版设置，可一键切换版式" aria-haspopup="dialog" aria-expanded={typesetOpen} onClick={() => setTypesetOpen((value) => !value)}><Icon name="style" size={15}/><span>排版</span><b>{currentMarkdownStyle.short}</b></button>
               {typesetOpen && <div className="quick-typeset-popover" role="dialog" aria-label="快速排版">
@@ -1201,7 +1211,7 @@ export default function Home() {
             <button className={`writing-mode-toggle dark-preview-toggle ${darkPreview ? "selected" : ""}`} aria-pressed={darkPreview} onClick={() => { setDarkPreview((value) => !value); notify(darkPreview ? "已返回微信浅色预览" : "已切换微信语义深色预览"); }} title="按微信深色语义预览，不影响复制样式"><Icon name="moon" size={14}/><b>{darkPreview ? "浅色" : "深色"}</b></button><span/>
             <button className={preview === "phone" ? "selected" : ""} aria-pressed={preview === "phone"} onClick={() => setPreview("phone")} aria-label="手机预览"><Icon name="phone"/></button>
             <button className={preview === "desktop" ? "selected" : ""} aria-pressed={preview === "desktop"} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
-            <button onClick={() => setSourceOpen(true)}>查看原稿</button>
+            <button className="source-view-button" onClick={() => setSourceOpen(true)}>查看原稿</button>
             </>}
           </div>
         </div>
@@ -1327,9 +1337,9 @@ export default function Home() {
       </aside>
 
       <nav className="mobile-dock" aria-label="手机工作区">
-        <button className={mobilePane === "workflow" ? "active" : ""} aria-current={mobilePane === "workflow" ? "page" : undefined} onClick={() => setMobilePane("workflow")}><Icon name="structure" size={20}/><span>流程</span><small>{stage}</small></button>
-        <button className={mobilePane === "canvas" ? "active" : ""} aria-current={mobilePane === "canvas" ? "page" : undefined} onClick={() => setMobilePane("canvas")}><Icon name="document" size={20}/><span>画布</span><small>{preview === "phone" ? "手机稿" : "桌面稿"}</small></button>
-        <button className={mobilePane === "inspector" ? "active" : ""} aria-current={mobilePane === "inspector" ? "page" : undefined} onClick={() => setMobilePane("inspector")}><Icon name="style" size={20}/><span>设置</span><small>{inspector}</small></button>
+        <button className={mobilePane === "workflow" ? "active" : ""} aria-current={mobilePane === "workflow" ? "page" : undefined} onClick={() => setMobilePane("workflow")}><Icon name="structure" size={20}/><span>稿件</span><small>{stage}</small></button>
+        <button className={mobilePane === "canvas" ? "active" : ""} aria-current={mobilePane === "canvas" ? "page" : undefined} onClick={() => setMobilePane("canvas")}><Icon name="document" size={20}/><span>阅读</span><small>{workspaceView === "final" ? "成稿" : "校订"}</small></button>
+        <button className={mobilePane === "inspector" ? "active" : ""} aria-current={mobilePane === "inspector" ? "page" : undefined} onClick={() => setMobilePane("inspector")}><Icon name="style" size={20}/><span>调整</span><small>{inspector}</small></button>
       </nav>
 
       {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>分析并编排</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : "标题已识别"} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>}
