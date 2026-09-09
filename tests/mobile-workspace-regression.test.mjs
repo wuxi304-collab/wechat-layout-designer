@@ -17,6 +17,8 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(page, />稿件<\/span>/);
   assert.match(page, />阅读<\/span>/);
   assert.match(page, />调整<\/span>/);
+  assert.match(page, /brand-title-mobile">钢铁私塾排版/);
+  assert.match(page, /delivery-label-mobile">检查/);
   assert.match(css, /\.studio-shell\.mobile-pane-workflow > \.left-panel/);
   assert.match(css, /\.studio-shell\.mobile-pane-canvas > \.canvas-area/);
   assert.match(css, /\.studio-shell\.mobile-pane-inspector > \.inspector-panel/);
@@ -25,6 +27,11 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(css, /\.studio-final-view \.canvas-stage/);
   assert.match(css, /\.studio-final-view \.paper-frame/);
   assert.match(css, /filter: none !important/);
+  assert.match(css, /V4\.2 · 移动编辑器重构/);
+  assert.match(css, /--mobile-paper: #fffefa/);
+  assert.match(css, /\.workflow-nav \{[\s\S]*display: flex !important/);
+  assert.match(css, /scroll-snap-type: x mandatory/);
+  assert.match(css, /\.studio-final-view \.article-title-block h1/);
   assert.match(html, /viewport-fit=cover/);
 });
 

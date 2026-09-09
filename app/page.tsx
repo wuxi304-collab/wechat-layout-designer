@@ -1153,14 +1153,14 @@ export default function Home() {
   return (
     <main ref={studioRef} className={`studio-shell mobile-pane-${mobilePane} ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
       <header className="topbar">
-        <div className="product-mark"><span className="mark-seal">排</span><div><strong>公众号排版设计师</strong><small>江南编辑书房 · 文章有骨</small></div></div>
+        <div className="product-mark"><span className="mark-seal">排</span><div><strong><span className="brand-title-desktop">公众号排版设计师</span><span className="brand-title-mobile">钢铁私塾排版</span></strong><small>江南编辑书房 · 文章有骨</small></div></div>
         <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
         <div className="top-actions">
           <button className="icon-button" aria-label="恢复上一版本" onClick={restoreVersion}><Icon name="undo"/></button>
           <button className="icon-button" aria-label="生成恢复版本" onClick={saveVersion}><Icon name="history"/></button>
           <span className="top-divider"/>
           <button className="quiet-action" onClick={() => { setStage("编排"); setInspector("智能"); setMobilePane("canvas"); }}><Icon name="spark" size={15}/>整稿重排</button>
-          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); setMobilePane("inspector"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项需要处理` : "交付检查完成：0 项阻断"); }}>交付检查 <Icon name="publish" size={16}/></button>
+          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); setMobilePane("inspector"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项需要处理` : "交付检查完成：0 项阻断"); }}><span className="delivery-label-desktop">交付检查</span><span className="delivery-label-mobile">检查</span><Icon name="publish" size={16}/></button>
         </div>
       </header>
 
