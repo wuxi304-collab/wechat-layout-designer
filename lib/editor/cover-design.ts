@@ -335,27 +335,27 @@ export function buildCoverHarness(title: string, companyName: string | null) {
   const resolvedTitle = title === "未命名文章" ? "" : normalizeCoverOcrText(title);
   const companyRecord = companyName ? recordForCompany(companyName) : undefined;
   return {
-    workflowVersion: "7.0",
-    rule: "FINAL_FILE_ONLY",
+    workflowVersion: "8.0",
+    rule: "LOCKED_TEXT_IN_FINAL_IMAGE",
     company: {
       company: companyName,
       officialDomainHints: companyRecord?.officialDomains ?? [],
     },
     steps: companyName ? [
-      `先取得${companyName}官网或认证公众号正在使用的真实 Logo 文件，取不到就停止`,
-      "生成无字底图，再用代码原样放 Logo，并逐字排印标题与署名",
-      "核验尺寸、标题、唐淼和 Logo，只交付 final-cover.png",
+      `仅在取得${companyName}官网或认证公众号的真实 Logo 原图后使用 Logo；取不到就不画假 Logo`,
+      "直接制作带准确标题与署名的完整封面；若生图文字不准，立即用确定性文字层纠正",
+      "逐字核验标题、唐淼和 Logo，只交付 final-cover.png",
     ] : [
       "文章没有明确企业主体，不查找也不添加 Logo",
-      "生成无字底图，再用代码逐字排印标题与署名",
-      "核验尺寸、标题和唐淼，只交付 final-cover.png",
+      "直接制作带准确标题与署名的完整封面；若生图文字不准，立即用确定性文字层纠正",
+      "逐字核验标题和唐淼，只交付 final-cover.png",
     ],
-    requiredAssets: companyName ? ["BACKGROUND_IMAGE", "OFFICIAL_LOGO_IMAGE"] : ["BACKGROUND_IMAGE"],
-    requiredCapabilities: companyName ? ["WEB_RETRIEVAL", "IMAGE_GENERATION", "DETERMINISTIC_COMPOSITOR", "FILE_ATTACHMENT"] : ["IMAGE_GENERATION", "DETERMINISTIC_COMPOSITOR", "FILE_ATTACHMENT"],
-    stateMachine: ["PRECHECK", "ASSETS_READY", "BACKGROUND_READY", "COMPOSED", "VERIFIED", "DELIVERED"],
+    requiredAssets: companyName ? ["OFFICIAL_LOGO_IMAGE", "FINAL_COVER_IMAGE"] : ["FINAL_COVER_IMAGE"],
+    requiredCapabilities: companyName ? ["IMAGE_GENERATION", "TEXT_COMPOSITION", "FILE_ATTACHMENT"] : ["IMAGE_GENERATION", "TEXT_COMPOSITION", "FILE_ATTACHMENT"],
+    stateMachine: ["PRECHECK", "DESIGNED", "TEXT_LOCKED", "VERIFIED", "DELIVERED"],
     respondOnlyWhen: "VERIFIED_FINAL_COVER_PNG_EXISTS",
-    stopWhen: "ANY_REQUIRED_CAPABILITY_OR_ASSET_MISSING",
-    finalization: "DETERMINISTIC_COMPOSITE_THEN_VERIFY",
+    stopWhen: "LOCKED_TEXT_MISSING_OR_INCORRECT",
+    finalization: "FINAL_IMAGE_MUST_CONTAIN_LOCKED_TEXT",
     lockedText: {
       title: resolvedTitle || "缺少标题",
       signature: coverSignature,
@@ -368,34 +368,21 @@ export function buildCoverPrompt(style: CoverStyle, title: string, profile: Cove
   const protocol = buildCoverProtocol(style, title, profile, companyName);
   const officialDomains = companyName ? recordForCompany(companyName)?.officialDomains ?? profile.officialDomains : [];
   const logoTask = companyName
-    ? [
-        `企业：${companyName}${officialDomains.length ? `；官网线索：${officialDomains.join("、")}` : ""}。`,
-        "先从企业官网取得页面实际使用的 Logo 原图；官网没有可下载文件时，再取认证公众号头像或官方文章页素材。必须得到本地 PNG / SVG / WebP / JPG 文件后才能继续。",
-        "取不到真实文件就停止并请用户上传。禁止用搜索缩略图，禁止让模型猜、画、描摹或仿制 Logo。",
-      ]
-    : ["文章没有明确企业主体：不查找、不预留、不添加任何企业 Logo。行业词、月份、排产、价格和标题片段都不是企业名。"];
+    ? `企业：${companyName}。Logo：仅使用已取得的官网原图${officialDomains.length ? `（官网线索：${officialDomains.join("、")}）` : ""}；没有真实文件就不要添加，绝不仿制。`
+    : "Logo：文章没有明确企业主体，不添加任何 Logo；行业词、月份、排产、价格和标题片段都不是企业名。";
 
   return [
-    "【微信公众号成品封面｜V7 精准版】",
-    "只交付一张 final-cover.png，2350×1000（2.35:1）。底图是中间文件，不能作为结果。",
-    "【锁定文字】",
-    resolvedTitle ? `主标题：${resolvedTitle}` : "缺少主标题：停止并向用户索取，不得自拟。",
-    `右下署名：${coverSignature}`,
-    "【1｜Logo】",
-    ...logoTask,
-    "【2｜无字底图】",
-    `内容：${profile.subject} / ${profile.tone} / ${profile.intent}。视觉：${protocol.template}，${style.promptStyle}。`,
-    `主体：${protocol.visualAnchor}。隐喻：${protocol.visualMetaphor}`,
-    `构图：${style.composition}；左侧约 58% 为低纹理标题区，右下留署名区。材质：${style.texture}。配色：${style.palette.join("、")}。`,
-    "图像模型只生成无字底图：不得出现文字、Logo、占位框、乱码、样机或界面。",
-    "【3｜确定性合成】",
-    "底图生成后，必须用 Canvas / SVG / Sharp / ImageMagick 等确定性工具排字；图像模型不得书写标题和署名。标题按语义分 2—3 行，署名保持一行。",
-    companyName
-      ? "把取得的 Logo 原文件作为独立图层放在右上，只允许等比缩放和裁透明空边，不换色、不变形、不描边、不重绘。"
-      : "成品中不得出现企业 Logo。",
-    "【4｜交付前核对】",
-    `尺寸 2350×1000；标题逐字等于“${resolvedTitle || "缺少标题"}”；署名逐字等于“${coverSignature}”，其中姓名必须是“唐淼”。`,
-    companyName ? `Logo 必须是${companyName}官方原文件，并附来源网址。` : "确认没有 Logo 和无关品牌标志。",
-    "只返回 final-cover.png；不得返回底图、过程说明、多方案或稍后合成的承诺。",
+    "【微信公众号成品封面｜V8 直接版】",
+    "生成一张且只生成一张完整封面 PNG：2350×1000，2.35:1。禁止返回无字底图、样机、过程图或方案板。",
+    resolvedTitle ? `标题（必须真实出现在图片中，逐字一致）：“${resolvedTitle}”` : "缺少标题：停止，不得自拟。",
+    `右下固定署名（逐字一致）：“${coverSignature}”`,
+    `主题：${profile.subject} / ${profile.tone} / ${profile.intent}。`,
+    `画面：${protocol.visualAnchor}；${protocol.visualMetaphor}`,
+    `风格：${protocol.template}；${style.promptStyle}；${style.texture}。拒绝普通图库拼贴和廉价模板感。`,
+    `构图：标题占左侧约 52%，主视觉集中在右侧约 42%；${style.composition}。配色仅用 ${style.palette.join("、")}。`,
+    logoTask,
+    "文字要求：标题是第一视觉层级，按语义分 2—3 行；不要乱码、错字、第二标题或无关英文。若生图文字不准，必须在交付前用 Canvas / SVG / Sharp / ImageMagick 精确重排，不能返回缺标题图片。",
+    `验收：图片内标题必须逐字等于“${resolvedTitle || "缺少标题"}”，署名必须逐字等于“${coverSignature}”；任何一字不符都重做。`,
+    "最终只返回 final-cover.png。",
   ].join("\n");
 }

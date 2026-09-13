@@ -26,5 +26,16 @@ test("source toolbar follows clear, paste, analyze, import order", async () => {
   assert.ok(pasteIndex > clearIndex);
   assert.ok(analyzeIndex > pasteIndex);
   assert.ok(importIndex > analyzeIndex);
-  assert.match(actions, /分析并编排/);
+  assert.match(actions, /一键粘贴并编排/);
+  assert.match(actions, /重新分析/);
+});
+
+test("one tap paste writes, analyzes, and leaves the source drawer", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const handler = source.slice(source.indexOf("async function pasteMarkdown"), source.indexOf("function clearMarkdown"));
+  assert.match(handler, /navigator\.clipboard\.readText\(\)/);
+  assert.match(handler, /parseArticle\(nextMarkdown\)/);
+  assert.match(handler, /setSourceOpen\(false\)/);
+  assert.match(handler, /setStage\("编排"\)/);
+  assert.match(handler, /setMobilePane\("canvas"\)/);
 });
