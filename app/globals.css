@@ -9583,3 +9583,158 @@ body { font-weight: 400; }
   .article-body { padding-right: 19px !important; padding-left: 19px !important; }
   .article-footer { margin-inline: 19px !important; }
 }
+
+/* V4.4 · 手机稿件页最终布局契约：每个模块占据自己的网格行，旧规则不得穿透。 */
+@media (max-width: 840px) {
+  .studio-shell.mobile-pane-workflow > .left-panel {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto auto auto !important;
+    align-content: start !important;
+    gap: 0 !important;
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    scroll-padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  .studio-shell.mobile-pane-workflow .left-input {
+    grid-row: 1 !important;
+    min-height: 0 !important;
+    padding-block: 15px 13px !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .left-input-primary,
+  .studio-shell.mobile-pane-workflow .left-input-import {
+    min-height: 62px !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .panel-label {
+    grid-row: 2 !important;
+    padding-top: 14px !important;
+    padding-bottom: 6px !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .workflow-nav {
+    grid-row: 3 !important;
+    display: flex !important;
+    align-items: stretch !important;
+    min-height: 62px !important;
+    height: 62px !important;
+    margin: 0 !important;
+    padding: 3px 12px 7px !important;
+    overflow-x: auto !important;
+    overflow-y: clip !important;
+    contain: layout paint;
+  }
+
+  .studio-shell.mobile-pane-workflow .workflow-item {
+    flex: 0 0 84px !important;
+    display: grid !important;
+    grid-template-columns: 23px minmax(0, 1fr) !important;
+    grid-template-rows: 1fr !important;
+    align-items: center !important;
+    justify-content: initial !important;
+    gap: 6px !important;
+    min-width: 84px !important;
+    min-height: 52px !important;
+    height: 52px !important;
+    margin: 0 !important;
+    padding: 6px 8px !important;
+    text-align: left !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .workflow-icon,
+  .studio-shell.mobile-pane-workflow .workflow-item.active .workflow-icon {
+    grid-row: 1 !important;
+    width: 23px !important;
+    height: 23px !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .workflow-copy {
+    display: block !important;
+    min-width: 0 !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .workflow-copy b,
+  .studio-shell.mobile-pane-workflow .workflow-item.active .workflow-copy b {
+    display: block !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .left-context {
+    grid-row: 4 !important;
+    position: relative !important;
+    inset: auto !important;
+    z-index: 0 !important;
+    align-self: start !important;
+    width: calc(100% - 24px) !important;
+    min-height: 0 !important;
+    margin: 10px auto 24px !important;
+    transform: none !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .layout-presets {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-flow: row !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .layout-presets button {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto !important;
+    align-content: center !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+    min-height: 70px !important;
+    height: 70px !important;
+    padding: 8px 6px !important;
+    text-align: center !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .layout-presets button em {
+    display: none !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .layout-presets button b,
+  .studio-shell.mobile-pane-workflow .layout-presets button small {
+    min-width: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .context-note {
+    display: grid !important;
+    grid-template-columns: 24px minmax(0, 1fr) !important;
+    align-items: start !important;
+    min-height: 0 !important;
+  }
+
+  .studio-shell.mobile-pane-workflow .context-note p,
+  .studio-shell.mobile-pane-workflow .context-note b,
+  .studio-shell.mobile-pane-workflow .context-note small {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .studio-shell.mobile-pane-workflow .left-input {
+    grid-template-columns: 1fr !important;
+  }
+  .studio-shell.mobile-pane-workflow .left-input-heading { grid-column: 1 !important; }
+  .studio-shell.mobile-pane-workflow .left-input-primary,
+  .studio-shell.mobile-pane-workflow .left-input-import { min-height: 56px !important; }
+  .studio-shell.mobile-pane-workflow .workflow-item {
+    flex-basis: 80px !important;
+    min-width: 80px !important;
+  }
+  .studio-shell.mobile-pane-workflow .left-context { width: calc(100% - 16px) !important; }
+}

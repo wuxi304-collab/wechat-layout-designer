@@ -29,6 +29,7 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(css, /filter: none !important/);
   assert.match(css, /V4\.2 · 移动编辑器重构/);
   assert.match(css, /V4\.3 · 手机工作区再设计/);
+  assert.match(css, /V4\.4 · 手机稿件页最终布局契约/);
   assert.match(css, /--mobile-paper: #fffefa/);
   assert.match(css, /\.workflow-nav \{[\s\S]*display: flex !important/);
   assert.match(css, /scroll-snap-type: x mandatory/);
@@ -37,6 +38,11 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.doesNotMatch(css.slice(css.indexOf("V4.3 · 手机工作区再设计")), /width:\s*calc\(100% \+ 44px\)/);
   assert.match(css, /\.writing-mode-toggle:not\(\.dark-preview-toggle\) \{ display: none !important; \}/);
   assert.match(css, /\.cover-protocol-strip,[\s\S]*grid-template-columns: 1fr !important/);
+  const finalMobileContract = css.slice(css.indexOf("V4.4 · 手机稿件页最终布局契约"));
+  assert.match(finalMobileContract, /grid-template-rows: auto auto auto auto !important/);
+  assert.match(finalMobileContract, /\.workflow-nav \{[\s\S]*height: 62px !important/);
+  assert.match(finalMobileContract, /\.left-context \{[\s\S]*grid-row: 4 !important/);
+  assert.match(finalMobileContract, /\.layout-presets \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /\.studio-final-view \.article-title-block h1/);
   assert.match(html, /viewport-fit=cover/);
 });
