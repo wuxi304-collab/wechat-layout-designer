@@ -28,9 +28,15 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(css, /\.studio-final-view \.paper-frame/);
   assert.match(css, /filter: none !important/);
   assert.match(css, /V4\.2 · 移动编辑器重构/);
+  assert.match(css, /V4\.3 · 手机工作区再设计/);
   assert.match(css, /--mobile-paper: #fffefa/);
   assert.match(css, /\.workflow-nav \{[\s\S]*display: flex !important/);
   assert.match(css, /scroll-snap-type: x mandatory/);
+  assert.match(css, /\.left-context \{[\s\S]*position: static !important/);
+  assert.match(css, /\.source-actions \{[\s\S]*width: 100% !important/);
+  assert.doesNotMatch(css.slice(css.indexOf("V4.3 · 手机工作区再设计")), /width:\s*calc\(100% \+ 44px\)/);
+  assert.match(css, /\.writing-mode-toggle:not\(\.dark-preview-toggle\) \{ display: none !important; \}/);
+  assert.match(css, /\.cover-protocol-strip,[\s\S]*grid-template-columns: 1fr !important/);
   assert.match(css, /\.studio-final-view \.article-title-block h1/);
   assert.match(html, /viewport-fit=cover/);
 });
