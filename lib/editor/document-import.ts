@@ -133,12 +133,35 @@ function removeRepeatedPdfMargins(pages: PdfLine[][]) {
 
 export function pdfLinesToMarkdown(lines: PdfLine[], firstPage = false) {
   if (!lines.length) return "";
-  const bodyHeight = median(lines.map((line) => line.height).filter(Boolean)) || 16;
+  const heights = lines.map((line) => line.height).filter(Boolean).sort((a, b) => a - b);
+  const bodyHeight = median(heights.slice(0, Math.max(1, Math.ceil(heights.length * 0.6)))) || 16;
   const lineGaps = lines.slice(1).map((line, index) => lines[index].y - line.y).filter((gap) => gap > 1);
   const normalGap = median(lineGaps) || bodyHeight * 1.25;
   const leftEdge = Math.min(...lines.map((line) => line.x));
   const blocks: string[] = [];
   let paragraph = "";
+
+  // PDF 经常把同一视觉标题拆成两行。首屏先找最大字号簇，再按邻接关系合为一个 H1；
+  // 页眉或 Logo 旁的小字不会因为“出现得更早”而抢走标题。
+  const earlyDisplay = firstPage
+    ? lines.slice(0, 10).map((line, index) => ({ line, index })).filter(({ line }) => line.height >= bodyHeight * 1.22 && line.text.length <= 72)
+    : [];
+  const largestDisplay = Math.max(0, ...earlyDisplay.map(({ line }) => line.height));
+  const titleCandidates = earlyDisplay.filter(({ line }) => line.height >= largestDisplay * 0.88);
+  const titleGroup: typeof titleCandidates = [];
+  for (const candidate of titleCandidates) {
+    if (!titleGroup.length) {
+      titleGroup.push(candidate);
+      continue;
+    }
+    const previous = titleGroup.at(-1)!;
+    const closeEnough = candidate.index === previous.index + 1
+      && previous.line.y - candidate.line.y <= Math.max(largestDisplay * 2.4, normalGap * 2);
+    if (!closeEnough || `${titleGroup.map(({ line }) => line.text).join("")}${candidate.line.text}`.length > 96) break;
+    titleGroup.push(candidate);
+  }
+  const titleIndices = new Set(titleGroup.map(({ index }) => index));
+  const titleText = titleGroup.map(({ line }) => line.text).join("");
 
   const flush = () => {
     if (paragraph.trim()) blocks.push(paragraph.trim());
@@ -147,10 +170,15 @@ export function pdfLinesToMarkdown(lines: PdfLine[], firstPage = false) {
 
   lines.forEach((line, index) => {
     const previous = lines[index - 1];
+    if (titleIndices.has(index)) {
+      flush();
+      if (index === titleGroup[0]?.index) blocks.push(`# ${titleText}`);
+      return;
+    }
     const isDisplayLine = line.height >= bodyHeight * 1.22 && line.text.length <= 72;
     if (isDisplayLine) {
       flush();
-      blocks.push(`${firstPage && index < 3 && !blocks.length ? "#" : "##"} ${line.text}`);
+      blocks.push(`## ${line.text}`);
       return;
     }
     const verticalGap = previous ? previous.y - line.y : 0;

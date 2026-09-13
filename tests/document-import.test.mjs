@@ -20,6 +20,28 @@ test("PDF 大字号首行会保留为文章标题", () => {
   assert.match(markdown, /^# 太钢今年最狠的一刀/);
 });
 
+test("PDF 两行大标题会合并为一个 H1", () => {
+  const markdown = pdfLinesToMarkdown([
+    { text: "不锈钢8月排产创历史新高，", x: 40, y: 740, height: 30 },
+    { text: "钢厂到底在赌什么？", x: 40, y: 700, height: 30 },
+    { text: "排产数据背后是另一套判断。", x: 40, y: 640, height: 16 },
+    { text: "供需关系正在发生变化。", x: 40, y: 615, height: 16 },
+  ], true);
+  assert.match(markdown, /^# 不锈钢8月排产创历史新高，钢厂到底在赌什么？/);
+  assert.doesNotMatch(markdown, /^## 钢厂/m);
+});
+
+test("PDF 小页眉不会抢走更大字号的文章标题", () => {
+  const markdown = pdfLinesToMarkdown([
+    { text: "钢铁私塾", x: 40, y: 780, height: 18 },
+    { text: "太钢今年最狠的一刀", x: 40, y: 720, height: 32 },
+    { text: "这不是降本，而是重新定义研发。", x: 40, y: 650, height: 16 },
+    { text: "研发投入开始改变成本结构。", x: 40, y: 625, height: 16 },
+  ], true);
+  assert.match(markdown, /# 太钢今年最狠的一刀/);
+  assert.doesNotMatch(markdown, /^# 钢铁私塾/m);
+});
+
 test("Word 文档会在本机转换为带标题层级的 Markdown", async () => {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>

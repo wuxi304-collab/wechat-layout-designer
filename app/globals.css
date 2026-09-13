@@ -9238,3 +9238,44 @@ body { font-weight: 400; }
   .studio-final-view .article-body { padding-right: 19px !important; padding-left: 19px !important; }
   .studio-final-view .article-title-block h1 { font-size: 27px !important; }
 }
+
+/* V4.2 · 中文阅读节奏：不靠拉字距制造“高级感”，让字面、行盒和段落各守其位。 */
+.article-page {
+  font-variant-east-asian: proportional-width;
+  font-feature-settings: "kern" 1;
+}
+.article-title-block h1 {
+  line-height: clamp(1.28, var(--md-title-leading, 1.36), 1.42);
+  letter-spacing: clamp(-.028em, var(--md-title-tracking, -.018em), -.008em);
+  text-wrap: balance;
+}
+.article-body .selectable-block > p {
+  max-width: 100%;
+  text-align: start;
+  text-justify: auto;
+  letter-spacing: clamp(0em, var(--article-tracking, .008em), .014em);
+}
+.article-page.font-literary .article-body .selectable-block > p { letter-spacing: .012em; }
+.article-page.font-clear .article-body .selectable-block > p { letter-spacing: 0; }
+.chapter-heading h2,
+.article-subheading { line-height: 1.5; letter-spacing: -.006em; }
+.article-byline,
+.article-footer,
+.article-references,
+.article-footnotes { letter-spacing: 0; }
+.source-health .title-detected {
+  min-width: 0;
+  max-width: min(420px, 46vw);
+  overflow: hidden;
+  color: #2e6a5a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 840px) {
+  .article-body .selectable-block > p {
+    letter-spacing: min(var(--article-tracking, .006em), .01em);
+  }
+  .article-page.font-literary .article-body .selectable-block > p { letter-spacing: .008em; }
+  .source-health .title-detected { max-width: 100%; white-space: normal; }
+}
