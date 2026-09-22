@@ -1193,9 +1193,9 @@ export default function Home() {
       </header>
 
       <aside className="left-panel">
-        <section className="left-input" aria-label="稿件输入">
-          <div className="left-input-heading"><div><span>稿件输入</span><small>先放稿，再设计</small></div><i>{wordCount.toLocaleString()} 字</i></div>
-          <button className="left-input-primary" onClick={() => setSourceOpen(true)}><Icon name="document" size={16}/><span><b>编辑 Markdown</b><small>粘贴、清空或继续修改</small></span><Icon name="chevron" size={14}/></button>
+        <section className={`left-input ${markdown.trim() ? "has-draft" : "is-empty"}`} aria-label="稿件输入">
+          <div className="left-input-heading"><div><span>稿件输入</span><small>{article.title === "未命名文章" ? "标题待确认" : "标题已识别"}</small></div><i>{wordCount.toLocaleString()} 字</i></div>
+          <button className="left-input-primary" onClick={() => setSourceOpen(true)}><Icon name="document" size={16}/><span><b>{markdown.trim() ? "编辑原稿" : "粘贴 Markdown"}</b><small>{markdown.trim() ? "查看、清空或继续修改" : "一键粘贴并自动编排"}</small></span><Icon name="chevron" size={14}/></button>
           <button className="left-input-import" onClick={() => fileRef.current?.click()} disabled={importingFile}><Icon name={importingFile ? "history" : "plus"} size={14}/>{importingFile ? "正在解析" : "导入本地稿件"} <small>{importingFile ? importProgress : "PDF≤500页 · ≤50MB"}</small></button>
           <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.docx,.pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" hidden onChange={(event) => importFile(event.target.files?.[0])}/>
         </section>

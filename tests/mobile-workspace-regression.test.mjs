@@ -19,6 +19,7 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(page, />调整<\/span>/);
   assert.match(page, /brand-title-mobile">钢铁私塾排版/);
   assert.match(page, /delivery-label-mobile">检查/);
+  assert.match(page, /left-input \$\{markdown\.trim\(\) \? "has-draft" : "is-empty"\}/);
   assert.match(css, /\.studio-shell\.mobile-pane-workflow > \.left-panel/);
   assert.match(css, /\.studio-shell\.mobile-pane-canvas > \.canvas-area/);
   assert.match(css, /\.studio-shell\.mobile-pane-inspector > \.inspector-panel/);
@@ -31,6 +32,7 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(css, /V4\.3 · 手机工作区再设计/);
   assert.match(css, /V4\.4 · 手机稿件页最终布局契约/);
   assert.match(css, /V4\.7 · 手机工作流精修/);
+  assert.match(css, /V4\.8 · 手机三工作面收束/);
   assert.match(css, /--mobile-paper: #fffefa/);
   assert.match(css, /\.workflow-nav \{[\s\S]*display: flex !important/);
   assert.match(css, /scroll-snap-type: x mandatory/);
@@ -45,6 +47,8 @@ test("mobile workspace uses one visible pane and a touch dock", async () => {
   assert.match(finalMobileContract, /\.left-context \{[\s\S]*grid-row: 4 !important/);
   assert.match(finalMobileContract, /\.layout-presets \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /\.studio-final-view \.article-title-block h1/);
+  assert.match(css, /\.studio-shell\.mobile-pane-canvas \.dark-preview-toggle/);
+  assert.match(css, /\.studio-shell\.mobile-pane-inspector \.inspector-tabs button em/);
   assert.match(html, /viewport-fit=cover/);
 });
 
