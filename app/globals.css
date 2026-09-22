@@ -9829,3 +9829,83 @@ body { font-weight: 400; }
     width: 100% !important;
   }
 }
+
+/* V4.7 · 手机工作流精修：状态不漏字，次要操作不再伪装成禁用。 */
+.panel-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-label b {
+  color: #8fa6b5;
+  font-family: var(--font-number);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+.workflow-item.complete .workflow-icon { color: #e58b8f; }
+
+@media (max-width: 840px) {
+  .studio-shell.mobile-pane-workflow .panel-label {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+  .studio-shell.mobile-pane-workflow .panel-label b {
+    color: #758997 !important;
+    font-size: 11px !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-copy small,
+  .studio-shell.mobile-pane-workflow .workflow-item.active .workflow-copy small,
+  .studio-shell.mobile-pane-workflow .workflow-item.complete .workflow-copy small {
+    display: none !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-item.complete .workflow-icon {
+    border-color: rgba(178,58,66,.22) !important;
+    background: rgba(178,58,66,.08) !important;
+    color: #a93b43 !important;
+  }
+  .studio-shell.mobile-pane-workflow .left-context {
+    padding: 16px 14px 18px !important;
+    border: 1px solid #dce3e7 !important;
+    box-shadow: 0 7px 20px rgba(20,44,64,.05) !important;
+  }
+  .studio-shell.mobile-pane-workflow .context-head { margin-bottom: 11px !important; }
+  .studio-shell.mobile-pane-workflow .workflow-components {
+    margin-top: 12px !important;
+    border-top-color: #dfe5e8 !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-components > summary {
+    min-height: 52px !important;
+    color: #17344d !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-components > summary span {
+    color: #17344d !important;
+    font-size: 13px !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-components > summary small {
+    color: #6f818e !important;
+    font-size: 11px !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-components > summary svg { color: #8a3d43 !important; }
+  .studio-shell.mobile-pane-workflow .workflow-next-action {
+    min-height: 58px !important;
+    margin-top: 13px !important;
+    padding: 10px 14px !important;
+    border: 0 !important;
+    border-radius: 11px !important;
+    background: #173a56 !important;
+    color: #fff !important;
+    box-shadow: 0 7px 16px rgba(23,58,86,.16) !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-next-action small {
+    color: #b9c9d3 !important;
+    font-size: 10px !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-next-action b {
+    color: #fff !important;
+    font-size: 14px !important;
+  }
+  .studio-shell.mobile-pane-workflow .workflow-next-action svg { color: #ff8589 !important; }
+  .mobile-dock button span { font-size: 12.5px !important; }
+}

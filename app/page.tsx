@@ -572,6 +572,7 @@ export default function Home() {
 
   const currentTheme = themes[theme];
   const currentMarkdownStyle = markdownStyles[markdownStyle];
+  const currentStageIndex = stageItems.findIndex((item) => item.title === stage);
   const articleTitleSize = titleBaseSizes[markdownStyle] * titleScale;
   const safeMarkdown = useMemo(() => normalizeMarkdownInput(markdown), [markdown]);
   const encodingIssues = useMemo(() => findEncodingIssues(markdown), [markdown]);
@@ -1198,9 +1199,9 @@ export default function Home() {
           <button className="left-input-import" onClick={() => fileRef.current?.click()} disabled={importingFile}><Icon name={importingFile ? "history" : "plus"} size={14}/>{importingFile ? "正在解析" : "导入本地稿件"} <small>{importingFile ? importProgress : "PDF≤500页 · ≤50MB"}</small></button>
           <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.docx,.pdf,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" hidden onChange={(event) => importFile(event.target.files?.[0])}/>
         </section>
-        <div className="panel-label">设计流程</div>
+        <div className="panel-label"><span>设计流程</span><b>{String(currentStageIndex + 1).padStart(2, "0")} / 05</b></div>
         <nav className="workflow-nav" aria-label="设计流程">
-          {stageItems.map((item, index) => <button key={item.title} className={`workflow-item ${stage === item.title ? "active" : ""}`} aria-current={stage === item.title ? "step" : undefined} onClick={() => activateStage(item.title)}>
+          {stageItems.map((item, index) => <button key={item.title} className={`workflow-item ${stage === item.title ? "active" : ""} ${index < currentStageIndex ? "complete" : ""}`} aria-current={stage === item.title ? "step" : undefined} onClick={() => activateStage(item.title)}>
             <span className="workflow-index">0{index + 1}</span><span className="workflow-icon"><Icon name={item.icon}/></span><span className="workflow-copy"><b>{item.title}</b><small>{item.meta}</small></span>
           </button>)}
         </nav>
@@ -1364,7 +1365,7 @@ export default function Home() {
       </aside>
 
       <nav className="mobile-dock" aria-label="手机工作区">
-        <button className={mobilePane === "workflow" ? "active" : ""} aria-current={mobilePane === "workflow" ? "page" : undefined} onClick={() => setMobilePane("workflow")}><Icon name="structure" size={20}/><span>稿件</span><small>{stage}</small></button>
+        <button className={mobilePane === "workflow" ? "active" : ""} aria-current={mobilePane === "workflow" ? "page" : undefined} onClick={() => setMobilePane("workflow")}><Icon name="structure" size={20}/><span>流程</span><small>{stage}</small></button>
         <button className={mobilePane === "canvas" ? "active" : ""} aria-current={mobilePane === "canvas" ? "page" : undefined} onClick={() => setMobilePane("canvas")}><Icon name="document" size={20}/><span>阅读</span><small>{workspaceView === "final" ? "成稿" : "校订"}</small></button>
         <button className={mobilePane === "inspector" ? "active" : ""} aria-current={mobilePane === "inspector" ? "page" : undefined} onClick={() => setMobilePane("inspector")}><Icon name="style" size={20}/><span>调整</span><small>{inspector}</small></button>
       </nav>
