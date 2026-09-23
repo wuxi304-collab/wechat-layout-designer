@@ -40,6 +40,22 @@ export function applyWechatTimelineTextSafety(root: HTMLElement) {
   return root;
 }
 
+export function enforceWechatInlineSemantics(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("strong,b").forEach((node) => {
+    node.style.setProperty("font-weight", "700");
+  });
+  root.querySelectorAll<HTMLElement>("em,i").forEach((node) => {
+    node.style.setProperty("font-style", "italic");
+  });
+  root.querySelectorAll<HTMLElement>("s,del").forEach((node) => {
+    node.style.setProperty("text-decoration", "line-through");
+  });
+  root.querySelectorAll<HTMLElement>("a").forEach((node) => {
+    node.style.setProperty("text-decoration", "underline");
+  });
+  return root;
+}
+
 export function findWechatFlowLayoutRisks(root: HTMLElement) {
   return [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))].filter((node) => {
     if (!isWechatFlowTag(node.tagName)) return false;
@@ -140,16 +156,49 @@ export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) 
     node.style.removeProperty("max-height");
   });
   applyWechatTimelineTextSafety(clone);
+  enforceWechatInlineSemantics(clone);
   return clone;
 }
 
+function copyRichWithSelection(html: string) {
+  if (typeof document === "undefined" || !document.body || typeof document.execCommand !== "function") return false;
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const selection = window.getSelection();
+  const savedRanges = selection ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange()) : [];
+  const container = document.createElement("div");
+  container.contentEditable = "true";
+  container.setAttribute("aria-hidden", "true");
+  container.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:.01;pointer-events:none;";
+  container.innerHTML = html;
+  document.body.appendChild(container);
+
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    container.remove();
+    selection?.removeAllRanges();
+    savedRanges.forEach((savedRange) => selection?.addRange(savedRange));
+    activeElement?.focus({ preventScroll: true });
+  }
+  return copied;
+}
+
 export async function writeRichClipboard(html: string, plainText: string) {
+  // iOS / 微信内置 WebView 常没有 ClipboardItem，但仍支持在点击手势中复制富文本选区。
+  // 必须先同步尝试，不能 await 之后再补救，否则浏览器会撤销复制权限。
+  if (copyRichWithSelection(html)) return "selection" as const;
+
   if (window.ClipboardItem && navigator.clipboard?.write) {
     await navigator.clipboard.write([new ClipboardItem({
       "text/html": new Blob([html], { type: "text/html;charset=utf-8" }),
       "text/plain": new Blob([plainText], { type: "text/plain;charset=utf-8" }),
     })]);
-    return;
+    return "clipboard" as const;
   }
-  await navigator.clipboard.writeText(plainText);
+  throw new Error("Rich clipboard unavailable");
 }

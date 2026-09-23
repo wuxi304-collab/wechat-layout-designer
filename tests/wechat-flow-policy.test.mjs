@@ -61,3 +61,17 @@ test("复制链会移除编辑外壳并在写入剪贴板前复检", async () =>
   assert.match(page, /公众号与朋友圈双入口稳排/);
   assert.match(page, /已阻止复制以避免微信文字重叠/);
 });
+
+test("手机端富文本复制不会退化成纯文本并丢失加粗", async () => {
+  const adapter = await readFile(new URL("../lib/editor/wechat-adapter.ts", import.meta.url), "utf8");
+  assert.match(adapter, /function copyRichWithSelection\(html: string\)/);
+  assert.match(adapter, /container\.contentEditable = "true"/);
+  assert.match(adapter, /document\.execCommand\("copy"\)/);
+  assert.ok(
+    adapter.indexOf("copyRichWithSelection(html)") < adapter.indexOf("navigator.clipboard.write"),
+    "富文本选区复制必须发生在异步 ClipboardItem 调用之前",
+  );
+  assert.match(adapter, /querySelectorAll<HTMLElement>\("strong,b"\)/);
+  assert.match(adapter, /setProperty\("font-weight", "700"\)/);
+  assert.doesNotMatch(adapter.slice(adapter.indexOf("export async function writeRichClipboard")), /writeText\(plainText\)/);
+});
