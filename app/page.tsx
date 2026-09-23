@@ -31,6 +31,7 @@ import { detectPlainTextTitle } from "@/lib/editor/title-detection";
 import { DocumentImportError, importDocumentFile } from "@/lib/editor/document-import";
 import { applyWechatTimelineTextSafety, findWechatFlowLayoutRisks, findWechatTimelineTextRisks, inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
 import { writePlainClipboard } from "@/lib/editor/clipboard";
+import { markdownFromRichClipboard } from "@/lib/editor/clipboard-import";
 
 type IconName =
   | "brand" | "document" | "structure" | "style" | "assets" | "check"
@@ -958,18 +959,31 @@ export default function Home() {
 
   async function pasteMarkdown() {
     try {
-      const text = await navigator.clipboard.readText();
+      let text = "";
+      let richHtml = "";
+      if (navigator.clipboard.read) {
+        try {
+          const items = await navigator.clipboard.read();
+          const item = items.find((candidate) => candidate.types.includes("text/plain"));
+          if (item) {
+            text = await (await item.getType("text/plain")).text();
+            if (item.types.includes("text/html")) richHtml = await (await item.getType("text/html")).text();
+          }
+        } catch { /* Some WebViews allow only readText. */ }
+      }
+      if (!text) text = await navigator.clipboard.readText();
       if (!text.trim()) return notify("剪贴板里没有可粘贴的文字");
-      const nextMarkdown = normalizeMarkdownInput(text);
+      const richMarkdown = markdownFromRichClipboard(richHtml, text);
+      const nextMarkdown = normalizeMarkdownInput(richMarkdown ?? text);
       const nextArticle = parseArticle(nextMarkdown);
       setVersions((items) => markdown.trim() ? [...items.slice(-4), { markdown, label: `粘贴前恢复点 ${items.length + 1}` }] : items);
       setMarkdown(nextMarkdown);
-      setSourceEncoding("Unicode · 剪贴板");
-      setImportWarnings([]);
+      setSourceEncoding(richMarkdown ? "富文本 · 加粗已保留" : "Unicode · 剪贴板文字");
+      setImportWarnings(!richMarkdown && !/\*\*[^*\n]+\*\*/.test(text) ? ["本次剪贴板仅含纯文字；若原文有加粗，请复制 Markdown 原稿"] : []);
       setSourceOpen(false);
       setStage("编排");
       setMobilePane("canvas");
-      notify(nextArticle.title === "未命名文章" ? "原稿已粘贴并编排，请补充文章标题" : `已粘贴并编排：${nextArticle.title}`);
+      notify(nextArticle.title === "未命名文章" ? "原稿已粘贴并编排，请补充文章标题" : richMarkdown ? `已粘贴并编排：${nextArticle.title} · 加粗已保留` : `已粘贴并编排：${nextArticle.title}${/\*\*[^*\n]+\*\*/.test(text) ? "" : " · 剪贴板未提供加粗格式"}`);
     } catch {
       notify("浏览器拦截了剪贴板；请在系统设置中允许此浏览器读取粘贴内容");
     }
