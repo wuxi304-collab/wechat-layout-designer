@@ -160,7 +160,7 @@ export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) 
   return clone;
 }
 
-function copyRichWithSelection(html: string) {
+function copyRichWithSelection(html: string, plainText: string) {
   if (typeof document === "undefined" || !document.body || typeof document.execCommand !== "function") return false;
   const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const selection = window.getSelection();
@@ -168,7 +168,9 @@ function copyRichWithSelection(html: string) {
   const container = document.createElement("div");
   container.contentEditable = "true";
   container.setAttribute("aria-hidden", "true");
-  container.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:.01;pointer-events:none;";
+  // 选区回退必须拥有正常的排版宽度。1px 隐藏容器会被部分 WebView
+  // 连同计算后的宽度复制到微信，造成正文一字一行。
+  container.style.cssText = "position:fixed;left:0;top:-200vh;width:100vw;min-height:1px;overflow:visible;white-space:normal;pointer-events:none;";
   container.innerHTML = html;
   document.body.appendChild(container);
 
@@ -177,21 +179,31 @@ function copyRichWithSelection(html: string) {
   selection?.removeAllRanges();
   selection?.addRange(range);
   let copied = false;
+  let suppliedHtml = false;
+  const onCopy = (event: ClipboardEvent) => {
+    if (!event.clipboardData) return;
+    event.clipboardData.setData("text/html", html);
+    event.clipboardData.setData("text/plain", plainText);
+    event.preventDefault();
+    suppliedHtml = true;
+  };
+  document.addEventListener("copy", onCopy);
   try {
     copied = document.execCommand("copy");
   } finally {
+    document.removeEventListener("copy", onCopy);
     container.remove();
     selection?.removeAllRanges();
     savedRanges.forEach((savedRange) => selection?.addRange(savedRange));
     activeElement?.focus({ preventScroll: true });
   }
-  return copied;
+  return copied && suppliedHtml;
 }
 
 export async function writeRichClipboard(html: string, plainText: string) {
   // iOS / 微信内置 WebView 常没有 ClipboardItem，但仍支持在点击手势中复制富文本选区。
   // 必须先同步尝试，不能 await 之后再补救，否则浏览器会撤销复制权限。
-  if (copyRichWithSelection(html)) return "selection" as const;
+  if (copyRichWithSelection(html, plainText)) return "selection" as const;
 
   if (window.ClipboardItem && navigator.clipboard?.write) {
     await navigator.clipboard.write([new ClipboardItem({

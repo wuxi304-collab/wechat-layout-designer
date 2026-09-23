@@ -64,11 +64,16 @@ test("复制链会移除编辑外壳并在写入剪贴板前复检", async () =>
 
 test("手机端富文本复制不会退化成纯文本并丢失加粗", async () => {
   const adapter = await readFile(new URL("../lib/editor/wechat-adapter.ts", import.meta.url), "utf8");
-  assert.match(adapter, /function copyRichWithSelection\(html: string\)/);
+  assert.match(adapter, /function copyRichWithSelection\(html: string, plainText: string\)/);
   assert.match(adapter, /container\.contentEditable = "true"/);
   assert.match(adapter, /document\.execCommand\("copy"\)/);
+  assert.match(adapter, /event\.clipboardData\.setData\("text\/html", html\)/);
+  assert.match(adapter, /event\.clipboardData\.setData\("text\/plain", plainText\)/);
+  assert.match(adapter, /return copied && suppliedHtml/);
+  assert.match(adapter, /width:100vw/);
+  assert.doesNotMatch(adapter, /width:1px;height:1px/);
   assert.ok(
-    adapter.indexOf("copyRichWithSelection(html)") < adapter.indexOf("navigator.clipboard.write"),
+    adapter.indexOf("copyRichWithSelection(html, plainText)") < adapter.indexOf("navigator.clipboard.write"),
     "富文本选区复制必须发生在异步 ClipboardItem 调用之前",
   );
   assert.match(adapter, /querySelectorAll<HTMLElement>\("strong,b"\)/);
