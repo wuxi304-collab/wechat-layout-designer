@@ -1,4 +1,4 @@
-function copyWithSelection(text: string) {
+function copyWithSelection(text: string, host?: HTMLElement | null) {
   if (typeof document === "undefined" || !document.body || typeof document.execCommand !== "function") return false;
 
   const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -19,7 +19,7 @@ function copyWithSelection(text: string) {
   textarea.style.pointerEvents = "none";
   textarea.style.fontSize = "16px";
 
-  document.body.appendChild(textarea);
+  (host ?? document.body).appendChild(textarea);
   textarea.focus({ preventScroll: true });
   textarea.select();
   textarea.setSelectionRange(0, text.length);
@@ -37,9 +37,9 @@ function copyWithSelection(text: string) {
   return copied;
 }
 
-export async function writePlainClipboard(text: string) {
+export async function writePlainClipboard(text: string, host?: HTMLElement | null) {
   // iOS WebView needs the selection copy to happen in the original tap stack.
-  if (copyWithSelection(text)) return "selection" as const;
+  if (copyWithSelection(text, host)) return "selection" as const;
 
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);

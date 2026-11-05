@@ -63,7 +63,7 @@ test("plain text copy has an iPhone-safe synchronous fallback and visible feedba
   assert.match(clipboard, /document\.execCommand\("copy"\)/);
   assert.match(clipboard, /navigator\.clipboard\?\.writeText/);
   assert.ok(
-    clipboard.indexOf("copyWithSelection(text)") < clipboard.indexOf("navigator.clipboard?.writeText"),
+    clipboard.indexOf("copyWithSelection(text, host)") < clipboard.indexOf("navigator.clipboard?.writeText"),
     "selection fallback must run in the original tap stack before async clipboard access",
   );
 });

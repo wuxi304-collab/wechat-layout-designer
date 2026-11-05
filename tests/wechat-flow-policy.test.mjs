@@ -50,21 +50,22 @@ test("朋友圈字体放大时行内文字跟随父段落缩放", () => {
 test("复制链会移除编辑外壳并在写入剪贴板前复检", async () => {
   const adapter = await readFile(new URL("../lib/editor/wechat-adapter.ts", import.meta.url), "utf8");
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const delivery = await readFile(new URL("../lib/editor/wechat-export.ts", import.meta.url), "utf8");
   assert.match(adapter, /data-wechat-flow-wrapper/);
   assert.match(adapter, /wrapper\.replaceWith\(\.\.\.Array\.from\(wrapper\.childNodes\)\)/);
   assert.match(adapter, /findWechatFlowLayoutRisks/);
   assert.match(adapter, /applyWechatTimelineTextSafety/);
   assert.match(adapter, /text-size-adjust/);
   assert.match(adapter, /findWechatTimelineTextRisks/);
-  assert.match(page, /findWechatFlowLayoutRisks\(exportRoot\)/);
-  assert.match(page, /findWechatTimelineTextRisks\(exportRoot\)/);
-  assert.match(page, /公众号与朋友圈双入口稳排/);
-  assert.match(page, /已阻止复制以避免微信文字重叠/);
+  assert.match(delivery, /findWechatFlowLayoutRisks\(exportRoot\)/);
+  assert.match(delivery, /findWechatTimelineTextRisks\(exportRoot\)/);
+  assert.match(page, /请粘贴到公众号正文并预览核对/);
+  assert.match(delivery, /可能造成文字重叠，已停止交付/);
 });
 
 test("手机端富文本复制不会退化成纯文本并丢失加粗", async () => {
   const adapter = await readFile(new URL("../lib/editor/wechat-adapter.ts", import.meta.url), "utf8");
-  assert.match(adapter, /function copyRichWithSelection\(html: string, plainText: string\)/);
+  assert.match(adapter, /function copyRichWithSelection\(html: string, plainText: string/);
   assert.match(adapter, /container\.contentEditable = "true"/);
   assert.match(adapter, /document\.execCommand\("copy"\)/);
   assert.match(adapter, /event\.clipboardData\.setData\("text\/html", html\)/);
@@ -73,7 +74,7 @@ test("手机端富文本复制不会退化成纯文本并丢失加粗", async ()
   assert.match(adapter, /width:100vw/);
   assert.doesNotMatch(adapter, /width:1px;height:1px/);
   assert.ok(
-    adapter.indexOf("copyRichWithSelection(html, plainText)") < adapter.indexOf("navigator.clipboard.write"),
+    adapter.indexOf("copyRichWithSelection(html, plainText, host)") < adapter.indexOf("navigator.clipboard.write"),
     "富文本选区复制必须发生在异步 ClipboardItem 调用之前",
   );
   assert.match(adapter, /querySelectorAll<HTMLElement>\("strong,b"\)/);

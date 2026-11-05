@@ -29,7 +29,9 @@ import {
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
 import { DocumentImportError, importDocumentFile } from "@/lib/editor/document-import";
-import { applyWechatTimelineTextSafety, findWechatFlowLayoutRisks, findWechatTimelineTextRisks, inlineWechatSafeStyles, writeRichClipboard } from "@/lib/editor/wechat-adapter";
+import { writeRichClipboard } from "@/lib/editor/wechat-adapter";
+import { prepareWechatDelivery, type WechatDelivery } from "@/lib/editor/wechat-export";
+import { WechatHtmlDialog } from "./wechat-html-dialog";
 import { writePlainClipboard } from "@/lib/editor/clipboard";
 import { markdownFromRichClipboard } from "@/lib/editor/clipboard-import";
 
@@ -537,6 +539,7 @@ export default function Home() {
   const [articleTracking, setArticleTracking] = useState(0.008);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("calm");
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [htmlDelivery, setHtmlDelivery] = useState<WechatDelivery | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [darkPreview, setDarkPreview] = useState(false);
@@ -548,7 +551,6 @@ export default function Home() {
   const [importProgress, setImportProgress] = useState("");
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [toast, setToast] = useState("");
-  const [adopted, setAdopted] = useState<string[]>(["quote"]);
   const [selected, setSelected] = useState<{ index: number; type: BlockType } | null>(null);
   const [capturedType, setCapturedType] = useState<BlockType | null>(null);
   const [syncedTypes, setSyncedTypes] = useState<BlockType[]>([]);
@@ -579,6 +581,7 @@ export default function Home() {
   const encodingIssues = useMemo(() => findEncodingIssues(markdown), [markdown]);
   const wordCount = useMemo(() => safeMarkdown.replace(/[#>*`\-]/g, "").trim().length, [safeMarkdown]);
   const article = useMemo(() => parseArticle(safeMarkdown), [safeMarkdown]);
+  const hasArticleBody = article.blocks.some((block) => block.type !== "divider") || Boolean(article.references.length || article.footnotes.length);
   const coverProfile = useMemo(() => analyzeCoverContent(article.title, safeMarkdown), [article.title, safeMarkdown]);
   const coverCompanySource = `${article.title}\u0000${coverProfile.companyName ?? ""}`;
   const suggestedCoverCompany = coverProfile.companyConfidence === "medium" ? coverProfile.companyName ?? "" : "";
@@ -616,19 +619,21 @@ export default function Home() {
   }, [article.title, safeMarkdown]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.phase}${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
   const diagnostics = useMemo(() => {
-    const items: string[] = [...encodingIssues];
+    const items: string[] = [...encodingIssues, ...importWarnings];
+    if (!hasArticleBody) items.push("正文为空，请先补充稿件");
     if (article.title === "未命名文章") items.push("未识别到标题：请将标题独占首行，或在前面添加 #");
     if (article.title.length > 64) items.push("标题超过微信 64 字上限");
     if (article.author.length > 8) items.push("作者超过微信 8 字上限");
     if (/(?:```|~~~)\s*mermaid/i.test(markdown)) items.push("Mermaid 图需要转为图片");
     if (/\[[^\]]*\]\(\s*\)/.test(markdown)) items.push("检测到空链接");
     if (/!\[[^\]]*\]\(https?:\/\//.test(markdown)) items.push("外链图片发布前请转存微信素材库");
+    if (article.blocks.some((block) => block.type === "table" && block.headers.length > 4)) items.push("有表格超过 4 列，建议在手机预览检查，必要时拆表");
     for (const marker of ["```", "~~~"] as const) {
       const fenceCount = markdown.split("\n").filter((line) => line.trimStart().startsWith(marker)).length;
       if (fenceCount % 2) items.push(`${marker} 代码块没有闭合`);
     }
     return items;
-  }, [article.author, article.title, encodingIssues, markdown]);
+  }, [article.author, article.blocks, article.title, encodingIssues, hasArticleBody, importWarnings, markdown]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("wechat-layout-designer-draft-v2");
@@ -838,6 +843,9 @@ export default function Home() {
       setSelected(null);
     }
     if (nextStage === "交付") setInspector("智能");
+    if (window.matchMedia("(max-width: 840px)").matches) {
+      setMobilePane(nextStage === "版式" || nextStage === "交付" ? "inspector" : nextStage === "封面" ? "canvas" : "workflow");
+    }
   }
 
   function advanceWorkflow() {
@@ -852,14 +860,12 @@ export default function Home() {
     window.requestAnimationFrame(() => articleRef.current?.querySelector<HTMLElement>(`[data-block-index="${index}"]`)?.scrollIntoView({ behavior: "smooth", block: typewriterMode ? "center" : "start" }));
   }
 
-  function adopt(id: string) { setAdopted((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]); }
 
   function applyLayout(mode: LayoutMode) {
     setLayoutMode(mode);
     if (mode === "calm") { setFontSize(17); setLineHeight(2); }
     if (mode === "balanced") { setFontSize(17); setLineHeight(1.88); }
     if (mode === "editorial") { setFontSize(18); setLineHeight(1.78); }
-    setAdopted(["quote", "list", "rhythm"]);
     notify(`已按“${mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}”策略重排全文`);
   }
 
@@ -874,7 +880,6 @@ export default function Home() {
     setTitleScale(style.typography.titleScale);
     setArticleTracking(style.typography.tracking);
     setSelected(null);
-    setAdopted(["quote", "list", "rhythm"]);
     notify(`已换为“${style.name}”，正文内容未改动`);
   }
 
@@ -1008,6 +1013,10 @@ export default function Home() {
   }
 
   async function copyPlainField(value: string, label: string) {
+    if (!value.trim() || (label === "标题" && value === "未命名文章")) {
+      setSourceOpen(true);
+      return notify(`请先在原稿中补充${label}`);
+    }
     if (findEncodingIssues(value).length) return notify(`${label}含有异常字符，请先回到原稿修正`);
     try {
       await writePlainClipboard(normalizeMarkdownInput(value));
@@ -1115,58 +1124,49 @@ export default function Home() {
     }
   }
 
-  async function copyArticle() {
+  function buildDelivery() {
+    if (!hasArticleBody) {
+      setSourceOpen(true);
+      notify("正文为空，请先粘贴或导入稿件");
+      return;
+    }
     if (encodingIssues.length) {
-      setInspector("智能");
-      return notify(`检测到 ${encodingIssues.length} 项编码风险，处理后才能复制正文`);
+      setSourceOpen(true);
+      notify(`检测到 ${encodingIssues.length} 项编码风险，修正后再交付`);
+      return;
     }
     const source = articleRef.current;
-    if (!source) return;
-    const wasDarkPreview = source.classList.contains("wechat-dark-preview");
-    if (wasDarkPreview) source.classList.remove("wechat-dark-preview");
-    const clone = source.cloneNode(true) as HTMLElement;
-    inlineWechatSafeStyles(source, clone);
-    if (wasDarkPreview) source.classList.add("wechat-dark-preview");
+    if (!source) {
+      notify("请先进入交付步骤，等待正文预览加载");
+      return;
+    }
     try {
-      const body = clone.querySelector<HTMLElement>("[data-copy-body]");
-      const footer = clone.querySelector<HTMLElement>("[data-copy-footer]");
-      if (!body) return notify("正文暂时无法导出，请重试");
+      return prepareWechatDelivery(source, {
+        title: article.title, author: article.author,
+        ink: currentTheme.palette.ink, accent: currentTheme.palette.accent,
+        bodyFont: wechatFontStacks[fontProfile], uiFont: wechatUiFontStack,
+        fontSize, lineHeight, warnings: diagnostics,
+      });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "生成排版正文失败，请重试");
+    }
+  }
 
-      const exportRoot = document.createElement("section");
-      exportRoot.lang = "zh-CN";
-      exportRoot.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.palette.ink};background:#ffffff;box-sizing:border-box;font-family:${wechatFontStacks[fontProfile]};font-size:${fontSize}px;line-height:${lineHeight};word-break:normal;overflow-wrap:anywhere;-webkit-text-size-adjust:100%;text-size-adjust:100%;`;
-      const byline = document.createElement("p");
-      byline.textContent = `主编：${article.author}`;
-      byline.style.cssText = `margin:0 0 30px;padding:0 0 14px;border:0;border-bottom:1px solid ${currentTheme.palette.accent}33;color:${currentTheme.palette.accent};font-family:${wechatUiFontStack};font-size:14px;font-weight:600;line-height:1.7;letter-spacing:.01em;text-align:left;`;
-      exportRoot.appendChild(byline);
+  function openWechatHtml() {
+    const delivery = buildDelivery();
+    if (delivery) setHtmlDelivery(delivery);
+  }
 
-      body.style.cssText = `display:block;width:100%;max-width:100%;margin:0;padding:0;color:${currentTheme.palette.ink};background:#ffffff;box-sizing:border-box;font-family:${wechatFontStacks[fontProfile]};font-size:${fontSize}px;line-height:${lineHeight};word-break:normal;overflow-wrap:anywhere;-webkit-text-size-adjust:100%;text-size-adjust:100%;`;
-      body.removeAttribute("data-copy-body");
-      exportRoot.appendChild(body);
-      if (footer) {
-        footer.removeAttribute("data-copy-footer");
-        exportRoot.appendChild(footer);
-      }
-      exportRoot.querySelectorAll("[data-copy-exclude]").forEach((node) => node.remove());
-      exportRoot.querySelectorAll("[data-copy-body],[data-copy-footer]").forEach((node) => { node.removeAttribute("data-copy-body"); node.removeAttribute("data-copy-footer"); });
-      applyWechatTimelineTextSafety(exportRoot);
-
-      const flowRisks = findWechatFlowLayoutRisks(exportRoot);
-      if (flowRisks.length) {
-        setInspector("规范");
-        return notify(`发现 ${flowRisks.length} 个固定尺寸正文块，已阻止复制以避免微信文字重叠`);
-      }
-      const timelineTextRisks = findWechatTimelineTextRisks(exportRoot);
-      if (timelineTextRisks.length) {
-        setInspector("规范");
-        return notify(`发现 ${timelineTextRisks.length} 个朋友圈字体缩放风险，已阻止复制`);
-      }
-
-      const html = normalizeMarkdownInput(exportRoot.outerHTML);
-      const plainText = normalizeMarkdownInput(exportRoot.innerText);
-      await writeRichClipboard(html, plainText);
-      notify("微信正文已复制，已启用公众号与朋友圈双入口稳排");
-    } catch { notify("浏览器未允许复制，请重试"); }
+  async function copyArticle() {
+    const delivery = buildDelivery();
+    if (!delivery) return;
+    try {
+      await writeRichClipboard(delivery.html, delivery.plainText);
+      notify("富文本正文已复制，请粘贴到公众号正文并预览核对");
+    } catch {
+      setHtmlDelivery(delivery);
+      notify("无法写入富文本剪贴板，请尝试下载 HTML");
+    }
   }
 
   async function checkWechatConnection() {
@@ -1207,7 +1207,7 @@ export default function Home() {
           <button className="icon-button" aria-label="生成恢复版本" onClick={saveVersion}><Icon name="history"/></button>
           <span className="top-divider"/>
           <button className="quiet-action" onClick={() => { setStage("编排"); setInspector("智能"); setMobilePane("canvas"); }}><Icon name="spark" size={15}/>整稿重排</button>
-          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); setMobilePane("inspector"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项需要处理` : "交付检查完成：0 项阻断"); }}><span className="delivery-label-desktop">交付检查</span><span className="delivery-label-mobile">检查</span><Icon name="publish" size={16}/></button>
+          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); setMobilePane("inspector"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项预检提醒` : "本地稿件预检无提醒"); }}><span className="delivery-label-desktop">交付检查</span><span className="delivery-label-mobile">检查</span><Icon name="publish" size={16}/></button>
         </div>
       </header>
 
@@ -1230,7 +1230,7 @@ export default function Home() {
           {stage === "编排" && <><div className="context-head"><span>阅读节奏</span><small>字号、行距与段距联动</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前：{layoutMode === "calm" ? "舒展" : layoutMode === "balanced" ? "均衡" : "编辑部"}</b><small>{layoutMode === "calm" ? "增加呼吸与停顿，适合长文。" : layoutMode === "balanced" ? "兼顾信息密度与手机阅读。" : "压缩段距，突出判断与证据。"}</small></p></div><details className="workflow-components"><summary><span>文章结构模块</span><small>推荐：{componentRecommendations.join(" · ")}</small><Icon name="chevron" size={14}/></summary><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索导读、判断、证据、步骤"/></label><div className="component-shelf">{filteredComponents.map((item) => { const recommended = componentRecommendations.includes(item.kind); return <button key={item.kind} className={recommended ? "recommended" : ""} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><em>{item.phase}</em><b>{item.kind}</b><small>{item.detail}</small></p><strong>{recommended ? "推荐" : "插入"}</strong></button>; })}</div></details></>}
           {stage === "版式" && <><div className="context-head"><span>五套正文骨架</span><small>按文章任务选择</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].palette.accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
           {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><b>{label.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>; })}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制成品封面指令 V8</button></>}
-          {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>{copiedField === "标题" ? "标题已复制" : "复制标题"}</b><small>{article.title.length}/64 字</small></span><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/></button><button className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>{copiedField === "作者" ? "作者已复制" : "复制作者"}</b><small>{article.author.length}/8 字</small></span><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="check"/>层级与段落<span>通过</span></li><li><Icon name="check"/>图片与链接<span>通过</span></li><li className={diagnostics.length ? "has-warning" : ""}><Icon name={diagnostics.length ? "warning" : "check"}/>微信样式兼容<span>{diagnostics.length ? `${diagnostics.length} 项` : "通过"}</span></li></ul></>}
+          {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>{copiedField === "标题" ? "标题已复制" : "复制标题"}</b><small>{article.title.length}/64 字</small></span><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/></button><button className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>{copiedField === "作者" ? "作者已复制" : "复制作者"}</b><small>{article.author.length}/8 字</small></span><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="document"/>本地预检<span>{diagnostics.length ? `${diagnostics.length} 项` : "无提醒"}</span></li><li><Icon name="phone"/>微信与朋友圈<span>待实测</span></li></ul></>}
           {stage !== "交付" && <button className="workflow-next-action" onClick={advanceWorkflow}><span><small>下一步</small><b>{stageItems[stageItems.findIndex((item) => item.title === stage) + 1]?.title}</b></span><Icon name="chevron" size={16}/></button>}
         </div>
 
@@ -1316,19 +1316,17 @@ export default function Home() {
             </article>
           </div>}
         </div>
-        <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "微信兼容检查通过"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
+        <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "本地预检无提醒"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
       </section>
 
       <aside className="inspector-panel" ref={inspectorPanelRef}>
         <div className="inspector-tabs" role="tablist">{(["智能", "样式", "封面", "规范", "品牌"] as InspectorTab[]).map((tab, index) => <button key={tab} role="tab" aria-selected={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => { setInspector(tab); if (tab === "封面") { setStage("封面"); setTypesetOpen(false); setSelected(null); } }}><em>0{index + 1}</em><span>{tab}</span><i/></button>)}</div>
         {inspector === "智能" && <div className="inspector-content">
-          <section className="design-score"><div className="score-ring"><strong>{diagnostics.length ? 86 : 94}</strong><small>设计分</small></div><div><span>节奏清楚，论点获得停顿</span><p>所有建议都可执行、撤回并留下恢复点。</p></div></section>
+          <section className="design-score"><div className="score-ring"><strong>{diagnostics.length}</strong><small>项提醒</small></div><div><span>交付预检</span><p>微信草稿与朋友圈显示待实测。</p></div></section>
           <div className="delivery-shortcuts" aria-label="微信标题与作者复制"><button className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/><span><b>{copiedField === "标题" ? "标题已复制" : "复制正文标题"}</b><small>{article.title.length}/64 字</small></span></button><button className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/><span><b>{copiedField === "作者" ? "作者已复制" : "复制作者信息"}</b><small>{article.author.length}/8 字</small></span></button></div><p className="copy-delivery-note">按标题、作者、正文的顺序粘贴到微信后台。</p><button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制微信正文</button>
+          <button type="button" className="wechat-html-launch" onClick={openWechatHtml}><Icon name="document" size={17}/>微信 HTML 交付</button>
           <section className="inspector-section layout-director"><div className="section-heading"><div><span>整稿导演</span><small>一次决定全文密度与节奏</small></div><Icon name="spark" size={17}/></div><div className="strategy-switch">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}<i/></button>)}</div><button className="apply-all" onClick={() => applyLayout(layoutMode)}>执行全文重排<span>不改一个字</span></button></section>
-          <section className="inspector-section"><div className="section-heading"><div><span>结构建议</span><small>来自文章语义，而非模板匹配</small></div><span className="suggestion-count">3</span></div><div className="suggestion-list">{[
-            ["quote", "观点形成阅读停顿", "1 处判断已识别为观点组件。"], ["list", "并列信息改为行动序列", "末段 4 个动作适合编号表达。"], ["rhythm", "首屏保留一个主命题", "标题与摘要的间距需要更克制。"],
-          ].map(([id, title, text], index) => { const applied = adopted.includes(id); return <article className={`suggestion-card ${applied ? "applied" : ""}`} key={id}><div className="suggestion-number">0{index + 1}</div><div><strong>{title}</strong><p>{text}</p></div><button className="proof-action" aria-pressed={applied} onClick={() => adopt(id)}><i/>{applied ? "已采用" : "采用"}</button></article>; })}</div></section>
-          <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>交付健康度</span><small>公众号粘贴前的确定性</small></div><span className={diagnostics.length ? "warning-tag" : "pass-tag"}>{diagnostics.length ? "待处理" : "通过"}</span></div>{diagnostics.length ? <ul>{diagnostics.map((item) => <li key={item}><Icon name="warning" size={15}/>{item}<span>定位</span></li>)}</ul> : <ul><li><Icon name="check" size={15}/>层级与段落<span>正常</span></li><li><Icon name="check" size={15}/>图片与链接<span>正常</span></li><li><Icon name="check" size={15}/>微信样式兼容<span>正常</span></li></ul>}</section>
+          <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>发布前复核</span><small>{outline.length} 个章节 · {article.blocks.length} 个正文块</small></div></div>{diagnostics.length > 0 && <ul>{diagnostics.map((item) => <li key={item}><Icon name="warning" size={15}/>{item}</li>)}</ul>}</section>
         </div>}
 
         {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme].palette; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.palette.paper, color: item.palette.ink }}><i style={{ background: item.palette.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section font-profile-section"><div className="section-heading"><div><span>字体气质</span><small>优先调用可用字库，缺字自动回退</small></div></div><div className="font-profile-grid">{fontProfiles.map((item) => <button key={item.key} className={fontProfile === item.key ? "active" : ""} aria-pressed={fontProfile === item.key} onClick={() => { setFontProfile(item.key); notify(`已切换为“${item.name}”字体气质`); }}><span>{item.sample}</span><div><b>{item.name}</b><small>{item.detail}</small></div><i>{fontProfile === item.key ? "正在使用" : "选择"}</i></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/><label><span><b>标题尺度</b><small>避免标题压住正文</small></span><output>{Math.round(titleScale * 100)}%</output></label><input type="range" min="0.86" max="1.1" step="0.02" value={titleScale} onChange={(event) => setTitleScale(Number(event.target.value))}/><label><span><b>正文字距</b><small>密不逼仄，疏不散漫</small></span><output>{articleTracking.toFixed(3)}</output></label><input type="range" min="0" max="0.04" step="0.002" value={articleTracking} onChange={(event) => setArticleTracking(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
@@ -1359,7 +1357,7 @@ export default function Home() {
         </div>}
 
         {inspector === "规范" && <div className="inspector-content standards-panel">
-          <section className="inspector-section"><div className="section-heading"><div><span>微信公众号排版规范</span><small>区分平台兼容与品牌建议</small></div><span className="pass-tag">已校验</span></div><ul className="rule-ledger">
+          <section className="inspector-section"><div className="section-heading"><div><span>微信公众号排版规范</span><small>兼容策略与编辑部建议</small></div></div><ul className="rule-ledger">
             <li><i>01</i><p><b>正文基线</b><small>16—18px，行距 1.75—1.9；避免依赖外部 CSS。</small></p></li>
             <li><i>02</i><p><b>层级克制</b><small>每屏一个视觉重点，颜色不超过三种，列表不超过七项。</small></p></li>
             <li><i>03</i><p><b>图片与链接</b><small>图片进入微信素材体系；外链、热链与跳转发布前复核。</small></p></li>
@@ -1368,7 +1366,7 @@ export default function Home() {
           </ul></section>
           <section className="inspector-section"><div className="section-heading"><div><span>钢铁私塾内容要求</span><small>平台红线之上，再加编辑部标准</small></div></div><ul className="content-guardrails">
             <li><Icon name="check" size={14}/><span><b>作者置前</b><small>主编署名位于正文开头。</small></span></li>
-            <li><Icon name="check" size={14}/><span><b>1500—2500 字</b><small>当前 {wordCount} 字，短稿允许人工放行。</small></span></li>
+            <li><Icon name="check" size={14}/><span><b>单篇建议不超过 2000 字</b><small>当前 {wordCount} 字。</small></span></li>
             <li><Icon name="check" size={14}/><span><b>事实可追溯</b><small>数据、标准、引语与图片来源可以复核。</small></span></li>
             <li><Icon name="warning" size={14}/><span><b>内容合规</b><small>杜绝虚假、侵权、低俗、诱导分享及夸大宣传；时政新闻注意资质边界。</small></span></li>
           </ul></section>
@@ -1389,6 +1387,7 @@ export default function Home() {
         <button className={mobilePane === "inspector" ? "active" : ""} aria-current={mobilePane === "inspector" ? "page" : undefined} onClick={() => setMobilePane("inspector")}><Icon name="style" size={20}/><span>调整</span><small>{inspector}</small></button>
       </nav>
 
+      {htmlDelivery && <WechatHtmlDialog delivery={htmlDelivery} filename={`${safeDownloadName(htmlDelivery.title)}-微信正文.html`} onClose={() => setHtmlDelivery(null)} />}
       {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><textarea value={markdown} onChange={(event) => { setMarkdown(event.target.value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }} aria-label="Markdown 原稿" lang="zh-CN" autoCapitalize="off" autoCorrect="off" spellCheck={false}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>}
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
