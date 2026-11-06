@@ -10,7 +10,7 @@ test("delivery presents the copy actions in the order used by the WeChat editor"
 
 test("source toolbar follows clear, paste, analyze, import order", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const actions = source.slice(source.indexOf('className="source-actions"'), source.indexOf('</header><textarea'));
+  const actions = source.slice(source.indexOf('className="source-actions"'), source.indexOf('</header><SourceWorkspace'));
   const clearIndex = actions.indexOf("clear-action");
   const pasteIndex = actions.indexOf("paste-action");
   const analyzeIndex = actions.indexOf("analyze-action");
