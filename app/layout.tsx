@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./wechat-html.css";
+import "./editorial-workflow.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://wuxi304-collab.github.io/wechat-layout-designer/"),

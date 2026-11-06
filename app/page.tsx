@@ -28,6 +28,7 @@ import {
   type CoverStyleCategory,
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
+import { closesFence, findMarkdownTitle, readAtxHeading, readFence, readMarkdownListItem, readMarkdownTable, readSetextHeading } from "@/lib/editor/markdown-structure";
 import { DocumentImportError, importDocumentFile } from "@/lib/editor/document-import";
 import { writeRichClipboard } from "@/lib/editor/wechat-adapter";
 import { prepareWechatDelivery, type WechatDelivery } from "@/lib/editor/wechat-export";
@@ -187,9 +188,9 @@ const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么
 - 把加工风险提前暴露
 - 把售后责任写进流程`;
 
-type InspectorTab = "智能" | "样式" | "封面" | "规范" | "品牌";
+type InspectorTab = "步骤" | "规范" | "品牌";
 type StageKey = "稿件" | "编排" | "版式" | "封面" | "交付";
-type MobilePane = "workflow" | "canvas" | "inspector";
+type MobilePane = "canvas" | "inspector";
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider" | "table" | "alert" | "image";
 type ArticleBlock =
@@ -197,8 +198,8 @@ type ArticleBlock =
   | { type: "heading"; text: string }
   | { type: "subheading"; text: string }
   | { type: "quote"; text: string }
-  | { type: "list"; items: { text: string; checked?: boolean }[] }
-  | { type: "table"; headers: string[]; rows: string[][] }
+  | { type: "list"; ordered: boolean; start: number; items: { text: string; checked?: boolean }[] }
+  | { type: "table"; headers: string[]; alignments: ("left" | "center" | "right")[]; rows: string[][] }
   | { type: "alert"; kind: AlertKind; text: string }
   | { type: "image"; alt: string; src: string; caption: string }
   | { type: "code"; language: string; code: string }
@@ -214,12 +215,12 @@ const wechatFontStacks: Record<FontProfile, string> = {
 
 const wechatUiFontStack = '"PingFang SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif';
 
-const stageItems: { icon: IconName; title: StageKey; meta: string }[] = [
-  { icon: "document", title: "稿件", meta: "识别结构" },
-  { icon: "structure", title: "编排", meta: "调整章法" },
-  { icon: "style", title: "版式", meta: "选择气质" },
-  { icon: "assets", title: "封面", meta: "设计头图" },
-  { icon: "check", title: "交付", meta: "复制发布" },
+const stageItems: { icon: IconName; title: StageKey; meta: string; heading: string; goal: string }[] = [
+  { icon: "document", title: "稿件", meta: "原稿与提纲", heading: "校对稿件", goal: "导入或粘贴原稿，核对标题、署名和章节。" },
+  { icon: "structure", title: "编排", meta: "结构与节奏", heading: "安排阅读节奏", goal: "选择段落疏密，按需补入导读、观点和证据。" },
+  { icon: "style", title: "版式", meta: "版型与字阶", heading: "挑选正文版式", goal: "先选版型，再微调字体、行距和纸墨。" },
+  { icon: "assets", title: "封面", meta: "方向与素材", heading: "设计文章封面", goal: "选定封面方向，备齐标题和必要素材。" },
+  { icon: "check", title: "交付", meta: "预检与复制", heading: "检查并交付", goal: "依次复制标题、作者和正文，粘贴后核对草稿。" },
 ];
 
 const components = [
@@ -336,7 +337,7 @@ function urlDomain(rawUrl: string) {
 }
 
 function unescapeMarkdown(value: string) {
-  return value.replace(/\\([\\`*_[\]{}()#+\-.!>])/g, "$1");
+  return value.replace(/\\([\\`*_[\]{}()#+\-.!>|])/g, "$1");
 }
 
 function plainInline(text: string) {
@@ -345,12 +346,14 @@ function plainInline(text: string) {
     .replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, "〔$2〕")
     .replace(/\[([^\]]+)\]\[(\d+)\]/g, "$1〔$2〕")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/\*\*\*([^*]+)\*\*\*/g, "$1")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1")
+    .replace(/(?<![\p{L}\p{N}_])(__?)([^_]+)\1(?![\p{L}\p{N}_])/gu, "$2")
     .replace(/~~(.*?)~~/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\[(?: |x|X)\]\s*/g, "")
-    .replace(/\\([\\`*_[\]{}()#+\-.!>])/g, "$1")
+    .replace(/\\([\\`*_[\]{}()#+\-.!>|])/g, "$1")
     .trim();
 }
 
@@ -359,17 +362,18 @@ function renderInline(text: string) {
     .replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, "〔ref:$2〕")
     .replace(/\[([^\]]+)\]\[(\d+)\]/g, "$1〔ref:$2〕")
     .replace(/\[\^([^\]]+)\]/g, "〔foot:$1〕");
-  const tokenPattern = /((?<!\\)\*\*[^*]+\*\*|(?<![\\*])\*[^*]+\*(?!\*)|(?<!\\)~~[^~]+~~|(?<!\\)`[^`\n]+`|<br\s*\/?>|〔ref:\d+〕|〔foot:[^〕]+〕|\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s，。；！？、）)]+)/gi;
+  const tokenPattern = /((?<!\\)\*\*\*[^*]+\*\*\*|(?<!\\)\*\*[^*]+\*\*|(?<![\\*])\*[^*]+\*(?!\*)|(?<![\\\p{L}\p{N}_])__(?!_)[^_\n]+__(?![\p{L}\p{N}_])|(?<![\\\p{L}\p{N}_])_(?!_)[^_\n]+_(?![\p{L}\p{N}_])|(?<!\\)~~[^~]+~~|(?<!\\)`[^`\n]+`|<br\s*\/?>|〔ref:\d+〕|〔foot:[^〕]+〕|\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s，。；！？、）)]+)/giu;
   const parts: React.ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = tokenPattern.exec(normalized))) {
     if (match.index > cursor) parts.push(unescapeMarkdown(normalized.slice(cursor, match.index)));
     const token = match[0];
-    if (token.startsWith("**")) parts.push(<strong key={`${match.index}-strong`}>{token.slice(2, -2).trim()}</strong>);
-    else if (token.startsWith("*")) parts.push(<em key={`${match.index}-em`}>{token.slice(1, -1).trim()}</em>);
+    if (token.startsWith("***")) parts.push(<strong key={`${match.index}-strong-em`}><em>{token.slice(3, -3).trim()}</em></strong>);
+    else if (token.startsWith("**") || token.startsWith("__")) parts.push(<strong key={`${match.index}-strong`}>{token.slice(2, -2).trim()}</strong>);
+    else if (token.startsWith("*") || token.startsWith("_")) parts.push(<em key={`${match.index}-em`}>{token.slice(1, -1).trim()}</em>);
     else if (token.startsWith("~~")) parts.push(<s key={`${match.index}-strike`}>{token.slice(2, -2)}</s>);
-    else if (token.startsWith("`")) parts.push(<code className="inline-code" key={`${match.index}-code`}>{token.slice(1, -1)}</code>);
+    else if (token.startsWith("`")) parts.push(<code className="inline-code" key={`${match.index}-code`}>{token.slice(1, -1).replace(/\\\|/g, "|")}</code>);
     else if (/^<br/i.test(token)) parts.push(<br key={`${match.index}-break`}/>);
     else if (token.startsWith("〔ref:")) parts.push(<sup className="inline-citation" key={`${match.index}-ref`}>〔{token.slice(5, -1)}〕</sup>);
     else if (token.startsWith("〔foot:")) parts.push(<sup className="inline-citation footnote-mark" key={`${match.index}-foot`}>〔{token.slice(6, -1)}〕</sup>);
@@ -390,134 +394,140 @@ function joinParagraph(lines: string[]) {
   return lines.reduce((result, line) => {
     if (!result) return line;
     const chineseJoin = /[\u3400-\u9fff，。！？；：、“”‘’）]$/.test(result) && /^[\u3400-\u9fff“‘（]/.test(line);
-    return `${result}${chineseJoin ? "" : " "}${line}`;
+    return `${result}${chineseJoin || result.endsWith("<br>") ? "" : " "}${line}`;
   }, "");
 }
 
 function parseArticle(markdown: string) {
-  let source = normalizeMarkdownInput(markdown)
-    .replace(/^([^\n]+)\n={3,}\s*$/gm, "# $1")
-    .replace(/^([^\n]+)\n-{3,}\s*$/gm, "## $1");
+  let source = normalizeMarkdownInput(markdown);
   let frontMatterTitle = "";
   let frontMatterAuthor = "";
+  let subtitle = "";
   const frontMatter = source.match(/^---\n([\s\S]*?)\n---\s*\n?/);
-  if (frontMatter) {
+  if (frontMatter && /^(?:title|author|byline|summary|description)\s*:/mi.test(frontMatter[1])) {
     frontMatter[1].split("\n").forEach((line) => {
       const field = line.match(/^([\w-]+)\s*:\s*["']?(.*?)["']?\s*$/);
       if (!field) return;
-      if (field[1].toLowerCase() === "title") frontMatterTitle = field[2];
-      if (["author", "byline"].includes(field[1].toLowerCase())) frontMatterAuthor = field[2];
+      const key = field[1].toLowerCase();
+      if (key === "title") frontMatterTitle = field[2];
+      if (key === "author" || key === "byline") frontMatterAuthor = field[2];
+      if (key === "summary" || key === "description") subtitle = field[2];
     });
     source = source.slice(frontMatter[0].length);
   }
-  const inferredTitle = detectPlainTextTitle(source, frontMatterTitle);
   const lines = source.split("\n");
-  if (inferredTitle) [...inferredTitle.lineIndices, ...inferredTitle.preambleLineIndices].forEach((lineIndex) => { lines[lineIndex] = ""; });
-  let title = frontMatterTitle || (inferredTitle ? plainInline(inferredTitle.raw) : "未命名文章");
+  const explicitTitle = findMarkdownTitle(lines);
+  const inferredTitle = detectPlainTextTitle(source, frontMatterTitle || explicitTitle?.text);
+  if (inferredTitle) [...inferredTitle.lineIndices, ...inferredTitle.preambleLineIndices].forEach((index) => { lines[index] = ""; });
+  if (explicitTitle && (!frontMatterTitle || plainInline(explicitTitle.text) === plainInline(frontMatterTitle))) {
+    explicitTitle.lineIndices.forEach((index) => { lines[index] = ""; });
+  }
+  const title = plainInline(frontMatterTitle || explicitTitle?.text || inferredTitle?.raw || "") || "未命名文章";
   let author = frontMatterAuthor || "钢铁私塾 唐淼";
   const blocks: ArticleBlock[] = [];
   const references: ArticleReference[] = [];
   const footnotes: ArticleFootnote[] = [];
   let paragraph: string[] = [];
-  let list: { text: string; checked?: boolean }[] = [];
+  let list: Extract<ArticleBlock, { type: "list" }> | null = null;
   let quote: string[] = [];
   let quoteKind: AlertKind | null = null;
-  let tableConsumedUntil = -1;
-  let codeFence: { marker: "```" | "~~~"; language: string; lines: string[] } | null = null;
-  const flushParagraph = () => { if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph) }); paragraph = []; };
-  const flushList = () => { if (list.length) blocks.push({ type: "list", items: list }); list = []; };
+  let codeFence: (NonNullable<ReturnType<typeof readFence>> & { lines: string[] }) | null = null;
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph) });
+    paragraph = [];
+  };
+  const flushList = () => { if (list) blocks.push(list); list = null; };
   const flushQuote = () => {
     if (quote.length) blocks.push(quoteKind ? { type: "alert", kind: quoteKind, text: joinParagraph(quote) } : { type: "quote", text: joinParagraph(quote) });
     quote = [];
     quoteKind = null;
   };
-  const parseTableRow = (value: string) => value.replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((cell) => plainInline(cell.trim().replace(/\\\|/g, "|")));
+  const flush = () => { flushParagraph(); flushList(); flushQuote(); };
 
-  lines.forEach((rawLine, lineIndex) => {
-    if (lineIndex <= tableConsumedUntil) return;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trim();
     if (codeFence) {
-      if (line.startsWith(codeFence.marker)) {
+      if (closesFence(rawLine, codeFence)) {
         blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
         codeFence = null;
       } else codeFence.lines.push(rawLine);
-      return;
+      continue;
     }
-    const fence = line.match(/^(```|~~~)\s*([\w+-]*)/);
+    const fence = readFence(rawLine);
     if (fence) {
-      flushParagraph(); flushList(); flushQuote();
-      codeFence = { marker: fence[1] as "```" | "~~~", language: fence[2] || "text", lines: [] };
-      return;
+      flush();
+      codeFence = { ...fence, lines: [] };
+      continue;
     }
-    if (!line) { flushParagraph(); flushList(); flushQuote(); return; }
-    const tableDivider = lines[lineIndex + 1]?.trim();
-    if (line.includes("|") && tableDivider && /^\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?$/.test(tableDivider)) {
-      flushParagraph(); flushList(); flushQuote();
-      const headers = parseTableRow(line);
-      const rows: string[][] = [];
-      let rowIndex = lineIndex + 2;
-      while (rowIndex < lines.length && lines[rowIndex].trim().includes("|")) {
-        rows.push(parseTableRow(lines[rowIndex].trim()));
-        rowIndex += 1;
-      }
-      blocks.push({ type: "table", headers, rows });
-      tableConsumedUntil = rowIndex - 1;
-      return;
+    if (!line) { flush(); continue; }
+
+    const table = readMarkdownTable(lines, lineIndex);
+    if (table) {
+      flush();
+      blocks.push({ type: "table", headers: table.headers, alignments: table.alignments, rows: table.rows });
+      lineIndex = table.consumedUntil;
+      continue;
     }
-    const authorLine = plainInline(line).match(/^(?:主编|作者)\s*[：:]\s*(.+)$/);
+    const authorLine = !blocks.length && !paragraph.length ? plainInline(line).match(/^(?:主编|作者)\s*[：:]\s*(.+)$/) : null;
     if (authorLine) {
-      flushParagraph(); flushList(); flushQuote();
-      author = authorLine[1].trim();
-      return;
+      flush();
+      author = frontMatterAuthor || authorLine[1].trim();
+      continue;
     }
-    const reference = line.match(/^\[([^\]]+)\]:\s*(https?:\/\/\S+?)(?:\s+["“](.*?)["”])?\s*$/);
+    const reference = line.match(/^\[((?!\^)[^\]]+)\]:\s*(https?:\/\/\S+?)(?:\s+["“](.*?)["”])?\s*$/);
     if (reference) {
-      flushParagraph(); flushList(); flushQuote();
+      flush();
       const url = cleanUrl(reference[2]);
       references.push({ id: reference[1], title: plainInline(reference[3] || urlDomain(url)), url, domain: urlDomain(url) });
-      return;
+      continue;
     }
     const footnote = line.match(/^\[\^([^\]]+)\]:\s*(.+)$/);
     if (footnote) {
-      flushParagraph(); flushList(); flushQuote();
-      footnotes.push({ id: footnote[1], text: plainInline(footnote[2]) });
-      return;
+      flush();
+      footnotes.push({ id: footnote[1], text: footnote[2] });
+      continue;
     }
     const image = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+["']([^"']*)["'])?\)$/);
     if (image) {
-      flushParagraph(); flushList(); flushQuote();
+      flush();
       blocks.push({ type: "image", alt: plainInline(image[1]) || "文章图片", src: cleanUrl(image[2]), caption: plainInline(image[3] || image[1]) });
-      return;
+      continue;
     }
-    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flushParagraph(); flushList(); flushQuote(); blocks.push({ type: "divider" }); return; }
-    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
-    if (heading?.[1].length === 1) { flushParagraph(); flushList(); flushQuote(); title = plainInline(heading[2]); return; }
-    if (heading?.[1].length === 2) { flushParagraph(); flushList(); flushQuote(); blocks.push({ type: "heading", text: plainInline(heading[2].replace(/^[一二三四五六七八九十]+、/, "")) }); return; }
-    if (heading && heading[1].length >= 3) { flushParagraph(); flushList(); flushQuote(); blocks.push({ type: "subheading", text: plainInline(heading[2]) }); return; }
+    const atx = readAtxHeading(rawLine);
+    const setext = atx ? null : readSetextHeading(rawLine, lines[lineIndex + 1]);
+    const heading = atx ?? setext;
+    if (heading) {
+      flush();
+      blocks.push({ type: heading.level <= 2 ? "heading" : "subheading", text: heading.text });
+      if (setext) lineIndex++;
+      continue;
+    }
+    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flush(); blocks.push({ type: "divider" }); continue; }
     const quoteLine = line.match(/^>\s?(.*)$/);
     if (quoteLine) {
       flushParagraph(); flushList();
       const alert = quoteLine[1].match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i);
-      if (alert) quoteKind = alert[1].toLowerCase() as AlertKind;
-      else quote.push(quoteLine[1]);
-      return;
+      if (alert) { flushQuote(); quoteKind = alert[1].toLowerCase() as AlertKind; }
+      else if (quoteLine[1]) quote.push(quoteLine[1]);
+      else if (quote.length && quote.at(-1) !== "<br><br>") quote.push("<br><br>");
+      continue;
     }
-    const listLine = line.match(/^(?:[-+*]|\d+[.)]|[（(]?\d+[）)])\s+(.+)$/);
+    const listLine = readMarkdownListItem(rawLine);
     if (listLine) {
       flushParagraph(); flushQuote();
-      const task = listLine[1].match(/^\[([ xX])\]\s+(.+)$/);
-      list.push(task ? { text: task[2], checked: task[1].toLowerCase() === "x" } : { text: listLine[1] });
-      return;
+      if (list && list.ordered !== listLine.ordered) flushList();
+      if (!list) list = { type: "list", ordered: listLine.ordered, start: listLine.start, items: [] };
+      list.items.push(listLine.item);
+      continue;
     }
-    flushQuote();
-    paragraph.push(line);
-  });
+    flushQuote(); flushList();
+    const explicitBreak = rawLine.endsWith("  ") || /(?<!\\)\\$/.test(rawLine);
+    paragraph.push(explicitBreak ? line.replace(/(?<!\\)\\$/, "") + "<br>" : line);
+  }
   if (codeFence) blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
-  flushParagraph(); flushList(); flushQuote();
-  const first = blocks.find((block) => block.type === "paragraph") as { type: "paragraph"; text: string } | undefined;
-  const firstText = first ? plainInline(first.text) : "";
-  const subtitle = first ? `${firstText.slice(0, 42)}${firstText.length > 42 ? "……" : ""}` : "让内容建立秩序，让观点获得形状。";
-  return { title, author, subtitle, blocks, references, footnotes };
+  flush();
+  return { title, author, subtitle, blocks, references, footnotes, unclosedFence: Boolean(codeFence) };
 }
 
 function blockLabel(type: BlockType) {
@@ -527,9 +537,9 @@ function blockLabel(type: BlockType) {
 export default function Home() {
   const [theme, setTheme] = useState<ThemeKey>("national");
   const [markdownStyle, setMarkdownStyle] = useState<MarkdownStyleKey>("jiangnan");
-  const [inspector, setInspector] = useState<InspectorTab>("智能");
-  const [stage, setStage] = useState<StageKey>("编排");
-  const [mobilePane, setMobilePane] = useState<MobilePane>("canvas");
+  const [inspector, setInspector] = useState<InspectorTab>("步骤");
+  const [stage, setStage] = useState<StageKey>("稿件");
+  const [mobilePane, setMobilePane] = useState<MobilePane>("inspector");
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [preview, setPreview] = useState<"phone" | "desktop">("phone");
   const [fontSize, setFontSize] = useState(18);
@@ -576,11 +586,31 @@ export default function Home() {
   const currentTheme = themes[theme];
   const currentMarkdownStyle = markdownStyles[markdownStyle];
   const currentStageIndex = stageItems.findIndex((item) => item.title === stage);
+  const currentStage = stageItems[currentStageIndex];
+  const nextStage = stageItems[currentStageIndex + 1];
   const articleTitleSize = titleBaseSizes[markdownStyle] * titleScale;
   const safeMarkdown = useMemo(() => normalizeMarkdownInput(markdown), [markdown]);
   const encodingIssues = useMemo(() => findEncodingIssues(markdown), [markdown]);
   const wordCount = useMemo(() => safeMarkdown.replace(/[#>*`\-]/g, "").trim().length, [safeMarkdown]);
   const article = useMemo(() => parseArticle(safeMarkdown), [safeMarkdown]);
+  const structure = useMemo(() => {
+    const count = { chapter: 0, paragraph: 0, quote: 0, table: 0, code: 0, list: 0 };
+    for (const block of article.blocks) {
+      if (block.type === "heading") count.chapter++;
+      if (block.type === "paragraph") count.paragraph++;
+      if (block.type === "quote" || block.type === "alert") count.quote++;
+      if (block.type === "table") count.table++;
+      if (block.type === "list") count.list++;
+      if (block.type === "code") count.code++;
+    }
+    return count;
+  }, [article.blocks]);
+  const suggestedStyle: MarkdownStyleKey = structure.table || structure.code ? "technical"
+    : wordCount >= 1200 && structure.chapter >= 3 ? "essay"
+    : structure.quote >= 2 ? "editorial"
+    : wordCount < 450 && !structure.chapter ? "minimal" : "jiangnan";
+  const styleReason = { technical: "稿件有表格或代码", essay: "长稿有多处章节", editorial: "稿件有多处引用或提示", minimal: "短稿、无独立章节", jiangnan: "适合用清晰章节与疏朗段落承载叙事" }[suggestedStyle];
+  const firstParagraphIndex = article.blocks.findIndex((block) => block.type === "paragraph");
   const hasArticleBody = article.blocks.some((block) => block.type !== "divider") || Boolean(article.references.length || article.footnotes.length);
   const coverProfile = useMemo(() => analyzeCoverContent(article.title, safeMarkdown), [article.title, safeMarkdown]);
   const coverCompanySource = `${article.title}\u0000${coverProfile.companyName ?? ""}`;
@@ -612,6 +642,7 @@ export default function Home() {
   }, [coverHarness.company.officialDomainHints, coverLogoSource, effectiveCoverCompany]);
   const canComposeCover = Boolean(coverBackgroundFile && (!effectiveCoverCompany.trim() || (coverLogoFile && coverLogoSourceValid)));
   const outline = useMemo(() => article.blocks.map((block, index) => block.type === "heading" || block.type === "subheading" ? { index, type: block.type, text: block.text } : null).filter((item): item is { index: number; type: "heading" | "subheading"; text: string } => Boolean(item)), [article.blocks]);
+  const chapterNumbers = useMemo(() => new Map(outline.filter((item) => item.type === "heading").map((item, index) => [item.index, index + 1])), [outline]);
   const componentRecommendations = useMemo(() => {
     const source = `${article.title}\n${safeMarkdown}`;
     const matched = components.filter((item) => item.signals.test(source)).map((item) => item.kind);
@@ -628,12 +659,9 @@ export default function Home() {
     if (/\[[^\]]*\]\(\s*\)/.test(markdown)) items.push("检测到空链接");
     if (/!\[[^\]]*\]\(https?:\/\//.test(markdown)) items.push("外链图片发布前请转存微信素材库");
     if (article.blocks.some((block) => block.type === "table" && block.headers.length > 4)) items.push("有表格超过 4 列，建议在手机预览检查，必要时拆表");
-    for (const marker of ["```", "~~~"] as const) {
-      const fenceCount = markdown.split("\n").filter((line) => line.trimStart().startsWith(marker)).length;
-      if (fenceCount % 2) items.push(`${marker} 代码块没有闭合`);
-    }
+    if (article.unclosedFence) items.push("代码块没有闭合，请核对围栏");
     return items;
-  }, [article.author, article.blocks, article.title, encodingIssues, hasArticleBody, importWarnings, markdown]);
+  }, [article.author, article.blocks, article.title, article.unclosedFence, encodingIssues, hasArticleBody, importWarnings, markdown]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("wechat-layout-designer-draft-v2");
@@ -668,7 +696,6 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       setPreview("phone");
       setWorkspaceView("final");
-      setMobilePane("canvas");
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -692,7 +719,7 @@ export default function Home() {
 
   useEffect(() => {
     if (inspectorPanelRef.current) inspectorPanelRef.current.scrollTop = 0;
-  }, [inspector]);
+  }, [inspector, stage]);
 
   useEffect(() => {
     if (!typesetOpen) return;
@@ -769,12 +796,7 @@ export default function Home() {
     previousStage.current = stage;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
-      gsap.fromTo(".left-context > *", { y: 8, opacity: 0.72, filter: "blur(2px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.46, stagger: 0.055, ease: "power2.out", clearProps: "transform,opacity,filter" });
-      gsap.fromTo(".workflow-item.active .workflow-icon", { scale: 0.91, rotate: -2 }, { scale: 1, rotate: 0, duration: 0.48, ease: "power3.out", clearProps: "transform" });
-      if (stage === "封面") {
-        gsap.fromTo(".cover-workbench", { y: 14, opacity: 0.6, scale: 0.99 }, { y: 0, opacity: 1, scale: 1, duration: 0.58, ease: "power3.out", clearProps: "transform,opacity" });
-        gsap.fromTo(".cover-analysis-grid > div", { y: 7, opacity: 0 }, { y: 0, opacity: 1, duration: 0.36, stagger: 0.07, ease: "sine.out", clearProps: "transform,opacity" });
-      }
+      gsap.fromTo(".editorial-stage-brief, .editorial-stage-content", { y: 4, opacity: .88 }, { y: 0, opacity: 1, duration: .22, ease: "power2.out", clearProps: "transform,opacity" });
     }, studioRef);
     return () => context.revert();
   }, [stage]);
@@ -799,11 +821,8 @@ export default function Home() {
     previousArticleStyle.current = articleStyle;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
-      const paperCraft = markdownStyle === "jiangnan";
-      const ease = paperCraft ? "steps(5)" : "power2.out";
-      gsap.fromTo(".article-page", { scale: paperCraft ? 0.986 : 0.993, rotate: paperCraft ? -0.12 : 0, filter: "blur(1.4px)" }, { scale: 1, rotate: 0, filter: "blur(0px)", duration: paperCraft ? 0.46 : 0.52, ease, clearProps: "transform,filter" });
-      gsap.fromTo(".article-page h1, .article-page h2, .article-page blockquote", { y: paperCraft ? 11 : 6, rotate: paperCraft ? -0.4 : 0, opacity: 0.72 }, { y: 0, rotate: 0, opacity: 1, duration: paperCraft ? 0.42 : 0.38, stagger: paperCraft ? 0.07 : 0.045, ease, clearProps: "transform,opacity" });
-      gsap.fromTo(".article-body > .selectable-block", { y: paperCraft ? 8 : 5, x: paperCraft ? -3 : 0 }, { y: 0, x: 0, duration: 0.42, stagger: paperCraft ? 0.045 : 0.025, ease, clearProps: "transform" });
+      // Animate the preview shell only; copied text must never capture transient opacity.
+      gsap.fromTo(".paper-frame", { opacity: .94 }, { opacity: 1, duration: .20, ease: "power2.out", clearProps: "opacity" });
     }, studioRef);
     return () => context.revert();
   }, [fontProfile, layoutMode, markdownStyle, theme]);
@@ -836,26 +855,29 @@ export default function Home() {
 
   function activateStage(nextStage: StageKey) {
     setStage(nextStage);
+    setInspector("步骤");
     setTypesetOpen(false);
-    if (nextStage === "版式") setInspector("样式");
-    if (nextStage === "封面") {
-      setInspector("封面");
-      setSelected(null);
-    }
-    if (nextStage === "交付") setInspector("智能");
-    if (window.matchMedia("(max-width: 840px)").matches) {
-      setMobilePane(nextStage === "版式" || nextStage === "交付" ? "inspector" : nextStage === "封面" ? "canvas" : "workflow");
-    }
+    setSelected(null);
+    setMobilePane("inspector");
   }
 
-  function advanceWorkflow() {
-    const currentIndex = stageItems.findIndex((item) => item.title === stage);
-    const nextStage = stageItems[currentIndex + 1]?.title;
-    if (!nextStage) return;
-    activateStage(nextStage);
+  function toggleMobileSurface() {
+    if (mobilePane === "canvas") {
+      setMobilePane("inspector");
+      return;
+    }
+    setPreview("phone");
+    setWorkspaceView("final");
+    setSelected(null);
+    setFocusMode(false);
+    setTypewriterMode(false);
+    setMobilePane("canvas");
   }
 
-  function jumpToBlock(index: number, type: "heading" | "subheading") {
+  function jumpToBlock(index: number, type: "title" | "heading" | "subheading") {
+    if (stage === "封面") activateStage("稿件");
+    setWorkspaceView("proof");
+    setMobilePane("canvas");
     setSelected({ index, type });
     window.requestAnimationFrame(() => articleRef.current?.querySelector<HTMLElement>(`[data-block-index="${index}"]`)?.scrollIntoView({ behavior: "smooth", block: typewriterMode ? "center" : "start" }));
   }
@@ -863,10 +885,8 @@ export default function Home() {
 
   function applyLayout(mode: LayoutMode) {
     setLayoutMode(mode);
-    if (mode === "calm") { setFontSize(17); setLineHeight(2); }
-    if (mode === "balanced") { setFontSize(17); setLineHeight(1.88); }
-    if (mode === "editorial") { setFontSize(18); setLineHeight(1.78); }
-    notify(`已按“${mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}”策略重排全文`);
+    setLineHeight(mode === "calm" ? 2 : mode === "balanced" ? 1.88 : 1.78);
+    notify("已更新行距与段距");
   }
 
   function applyMarkdownStyle(key: MarkdownStyleKey) {
@@ -899,8 +919,9 @@ export default function Home() {
   }
 
   function insertComponent(snippet: string, kind: string) {
+    setVersions((items) => [...items.slice(-4), { markdown, label: `插入${kind}前` }]);
     setMarkdown((value) => `${value.trimEnd()}${snippet}\n`);
-    setStage("编排");
+    activateStage("编排");
     notify(`已插入${kind}组件，内容结构已更新`);
   }
 
@@ -951,7 +972,7 @@ export default function Home() {
         setImportWarnings(imported.warnings);
         notify(imported.warnings.length ? `${imported.summary}；有 ${imported.warnings.length} 项复核提示` : imported.summary);
       }
-      setStage("稿件");
+      activateStage("稿件");
       setSourceOpen(true);
     } catch (error) {
       notify(error instanceof DocumentImportError ? error.message : "文件解析失败，请检查格式后重试");
@@ -986,8 +1007,7 @@ export default function Home() {
       setSourceEncoding(richMarkdown ? "富文本 · 加粗已保留" : "Unicode · 剪贴板文字");
       setImportWarnings(!richMarkdown && !/\*\*[^*\n]+\*\*/.test(text) ? ["本次剪贴板仅含纯文字；若原文有加粗，请复制 Markdown 原稿"] : []);
       setSourceOpen(false);
-      setStage("编排");
-      setMobilePane("canvas");
+      activateStage("编排");
       notify(nextArticle.title === "未命名文章" ? "原稿已粘贴并编排，请补充文章标题" : richMarkdown ? `已粘贴并编排：${nextArticle.title} · 加粗已保留` : `已粘贴并编排：${nextArticle.title}${/\*\*[^*\n]+\*\*/.test(text) ? "" : " · 剪贴板未提供加粗格式"}`);
     } catch {
       notify("浏览器拦截了剪贴板；请在系统设置中允许此浏览器读取粘贴内容");
@@ -1004,7 +1024,7 @@ export default function Home() {
 
   function analyzeAndArrange() {
     setSourceOpen(false);
-    setStage("编排");
+    activateStage("编排");
     notify(encodingIssues.length
       ? `已完成分析，发现 ${encodingIssues.length} 项编码风险`
       : article.title === "未命名文章"
@@ -1197,17 +1217,25 @@ export default function Home() {
     onKeyDown: (event: React.KeyboardEvent) => { if (workspaceView === "proof" && (event.key === "Enter" || event.key === " ")) setSelected({ index, type }); },
   });
 
+  function renderOutline() {
+    return <div className="article-outline">
+      <button type="button" className="outline-title" onClick={() => jumpToBlock(-1, "title")}><i>题</i><span>{article.title}</span></button>
+      {outline.map((item) => <button type="button" key={item.index} className={item.type === "subheading" ? "outline-subheading" : ""} onClick={() => jumpToBlock(item.index, item.type)}><i>{item.type === "heading" ? "章" : "节"}</i><span>{plainInline(item.text)}</span></button>)}
+    </div>;
+  }
+
   return (
-    <main ref={studioRef} className={`studio-shell mobile-pane-${mobilePane} ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
+    <main ref={studioRef} className={`studio-shell editorial-studio mobile-pane-${mobilePane} ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong><span className="brand-title-desktop">公众号排版设计师</span><span className="brand-title-mobile">钢铁私塾排版</span></strong><small>江南编辑书房 · 文章有骨</small></div></div>
-        <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="切换稿件"><Icon name="chevron" size={15}/></button></div>
+        <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="编辑当前原稿" onClick={() => setSourceOpen(true)}><Icon name="chevron" size={15}/></button></div>
         <div className="top-actions">
           <button className="icon-button" aria-label="恢复上一版本" onClick={restoreVersion}><Icon name="undo"/></button>
           <button className="icon-button" aria-label="生成恢复版本" onClick={saveVersion}><Icon name="history"/></button>
           <span className="top-divider"/>
-          <button className="quiet-action" onClick={() => { setStage("编排"); setInspector("智能"); setMobilePane("canvas"); }}><Icon name="spark" size={15}/>整稿重排</button>
-          <button className="primary-action" onClick={() => { setStage("交付"); setInspector("智能"); setMobilePane("inspector"); notify(diagnostics.length ? `发现 ${diagnostics.length} 项预检提醒` : "本地稿件预检无提醒"); }}><span className="delivery-label-desktop">交付检查</span><span className="delivery-label-mobile">检查</span><Icon name="publish" size={16}/></button>
+          <button type="button" className="mobile-surface-toggle" onClick={toggleMobileSurface}><Icon name={mobilePane === "canvas" ? "style" : stage === "封面" ? "assets" : "document"} size={15}/>{mobilePane === "canvas" ? "返回步骤" : stage === "封面" ? "看封面" : "看正文"}</button>
+          <button className="quiet-action" onClick={() => activateStage("编排")}><Icon name="structure" size={15}/>阅读编排</button>
+          <button className="primary-action" onClick={() => activateStage("交付")}><span className="delivery-label-desktop">交付检查</span><span className="delivery-label-mobile">检查</span><Icon name="publish" size={16}/></button>
         </div>
       </header>
 
@@ -1220,18 +1248,14 @@ export default function Home() {
         </section>
         <div className="panel-label"><span>设计流程</span><b>{String(currentStageIndex + 1).padStart(2, "0")} / 05</b></div>
         <nav className="workflow-nav" aria-label="设计流程">
-          {stageItems.map((item, index) => <button key={item.title} className={`workflow-item ${stage === item.title ? "active" : ""} ${index < currentStageIndex ? "complete" : ""}`} aria-current={stage === item.title ? "step" : undefined} onClick={() => activateStage(item.title)}>
+          {stageItems.map((item, index) => <button key={item.title} className={`workflow-item ${stage === item.title ? "active" : ""}`} aria-current={stage === item.title ? "step" : undefined} onClick={() => activateStage(item.title)}>
             <span className="workflow-index">0{index + 1}</span><span className="workflow-icon"><Icon name={item.icon}/></span><span className="workflow-copy"><b>{item.title}</b><small>{item.meta}</small></span>
           </button>)}
         </nav>
 
         <div className="left-context">
-          {stage === "稿件" && <><div className="context-head"><span>结构识别</span><small>{outline.length + 1} 个层级</small></div><div className="article-outline"><button className="outline-title" onClick={() => { setSelected({ index: -1, type: "title" }); articleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><i>题</i><span>{article.title}</span></button>{outline.map((item) => <button key={`${item.type}-${item.index}`} className={item.type === "subheading" ? "outline-subheading" : ""} onClick={() => jumpToBlock(item.index, item.type)}><i>{item.type === "heading" ? "章" : "节"}</i><span>{item.text}</span></button>)}</div></>}
-          {stage === "编排" && <><div className="context-head"><span>阅读节奏</span><small>字号、行距与段距联动</small></div><div className="layout-presets">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode, index) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}><em>0{index + 1}</em><b>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}</b><small>{mode === "calm" ? "长文慢读" : mode === "balanced" ? "通用首选" : "观点密集"}</small></button>)}</div><div className="context-note"><Icon name="spark"/><p><b>当前：{layoutMode === "calm" ? "舒展" : layoutMode === "balanced" ? "均衡" : "编辑部"}</b><small>{layoutMode === "calm" ? "增加呼吸与停顿，适合长文。" : layoutMode === "balanced" ? "兼顾信息密度与手机阅读。" : "压缩段距，突出判断与证据。"}</small></p></div><details className="workflow-components"><summary><span>文章结构模块</span><small>推荐：{componentRecommendations.join(" · ")}</small><Icon name="chevron" size={14}/></summary><label className="component-search"><Icon name="search" size={14}/><input value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索导读、判断、证据、步骤"/></label><div className="component-shelf">{filteredComponents.map((item) => { const recommended = componentRecommendations.includes(item.kind); return <button key={item.kind} className={recommended ? "recommended" : ""} draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", item.snippet)} onClick={() => insertComponent(item.snippet, item.kind)}><span>{item.mark}</span><p><em>{item.phase}</em><b>{item.kind}</b><small>{item.detail}</small></p><strong>{recommended ? "推荐" : "插入"}</strong></button>; })}</div></details></>}
-          {stage === "版式" && <><div className="context-head"><span>五套正文骨架</span><small>按文章任务选择</small></div><div className="mini-styles">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><em>0{index + 1}</em><i style={{ background: themes[item.theme].palette.accent }}/><span><b>{item.name}</b><small>{item.fit}</small></span>{markdownStyle === key && <strong>已用</strong>}</button>; })}</div></>}
-          {stage === "封面" && <><div className="context-head"><span>封面插图建议</span><small>读内容，再选画法</small></div><div className="cover-profile-mini"><span>{coverProfile.subject}</span><span>{coverProfile.tone}</span><span>{coverProfile.intent}</span></div><div className="cover-recommend-mini">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><b>{label.name}</b><small>{item.style.fit}</small></span><strong>{item.score}</strong></button>; })}</div><button className="cover-copy-mini" onClick={copyCoverPrompt}><Icon name="copy" size={14}/>复制成品封面指令 V8</button></>}
-          {stage === "交付" && <><div className="context-head"><span>微信交付</span><small>按顺序粘贴三个栏位</small></div><div className="publish-steps"><button className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><em>01</em><span><b>{copiedField === "标题" ? "标题已复制" : "复制标题"}</b><small>{article.title.length}/64 字</small></span><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/></button><button className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><em>02</em><span><b>{copiedField === "作者" ? "作者已复制" : "复制作者"}</b><small>{article.author.length}/8 字</small></span><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/></button><button className="strong" onClick={copyArticle}><em>03</em><span><b>复制微信正文</b><small>不含重复标题与页眉</small></span><Icon name="copy" size={15}/></button></div><ul className="left-checklist"><li><Icon name="document"/>本地预检<span>{diagnostics.length ? `${diagnostics.length} 项` : "无提醒"}</span></li><li><Icon name="phone"/>微信与朋友圈<span>待实测</span></li></ul></>}
-          {stage !== "交付" && <button className="workflow-next-action" onClick={advanceWorkflow}><span><small>下一步</small><b>{stageItems[stageItems.findIndex((item) => item.title === stage) + 1]?.title}</b></span><Icon name="chevron" size={16}/></button>}
+          <div className="context-head"><span>稿件提纲</span><small>{structure.chapter} 章 · {outline.length} 处标题</small></div>
+          {renderOutline()}
         </div>
 
         <div className="brand-kit-mini"><span className="brand-avatar">钢</span><div><b>钢铁私塾</b><small>品牌套件已启用</small></div><Icon name="check" size={16}/></div>
@@ -1239,7 +1263,7 @@ export default function Home() {
 
       <section className="canvas-area">
         <div className="canvas-toolbar">
-          <div><span className="canvas-kicker">{stage === "封面" ? "封面工作台" : "纸上工作台"}</span><strong>{stage === "封面" ? `${selectedCoverLabel.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
+          <div><span className="canvas-kicker">{stage === "封面" ? "封面预览" : currentMarkdownStyle.name}</span><strong>{stage === "封面" ? `${selectedCoverLabel.name} · 构图建议` : workspaceView === "final" ? `${preview === "phone" ? "手机" : "桌面"}成稿效果` : selected ? `正在校订 · ${blockLabel(selected.type)}` : "选择一段文字开始校订"}</strong></div>
           <div className="canvas-controls">
             {stage === "封面" ? <><span className="cover-ratio-tag">微信横幅 2.35:1</span><button onClick={() => activateStage("版式")}>返回正文设计</button></> : <>
             <div className="workspace-mode-switch" role="tablist" aria-label="工作视图"><i className={workspaceView === "final" ? "at-final" : ""}/><button role="tab" aria-selected={workspaceView === "proof"} className={workspaceView === "proof" ? "active" : ""} onClick={() => changeWorkspaceView("proof")}>校订</button><button role="tab" aria-selected={workspaceView === "final"} className={workspaceView === "final" ? "active" : ""} onClick={() => changeWorkspaceView("final")}>阅读</button></div>
@@ -1274,7 +1298,7 @@ export default function Home() {
           {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
           {stage === "封面" ? <section className="cover-workbench" onClick={(event) => event.stopPropagation()} style={{ "--cover-paper": selectedCoverStyle.palette[0], "--cover-ink": selectedCoverStyle.palette[1], "--cover-accent": selectedCoverStyle.palette[2] } as React.CSSProperties}>
-            <header className="cover-workbench-head"><div><span>READ → DESIGN → FINAL / V8</span><h2>{selectedCoverLabel.name}</h2><p>{selectedCoverStyle.direction}</p></div><strong><b>{coverRecommendations.find((item) => item.style.id === selectedCoverStyle.id)?.score ?? 88}</b><small>匹配度</small></strong></header>
+            <header className="cover-workbench-head"><div><span>封面 · 版式草图</span><h2>{selectedCoverLabel.name}</h2><p>{selectedCoverStyle.direction}</p></div><span className="cover-proof-label">2.35:1</span></header>
             <div className="cover-concept-canvas" aria-label={`${selectedCoverLabel.name}封面构图草图`}>
               <span className="cover-concept-index">COVER / {String(coverStyles.findIndex((item) => item.id === selectedCoverStyle.id) + 1).padStart(2, "0")}</span>
               <div className="cover-concept-title"><small>{coverProfile.subject} · {coverProfile.tone}</small><h3>{article.title}</h3><p>{selectedCoverLabel.short} / 最终成品必须准确排印此标题</p></div>
@@ -1284,24 +1308,45 @@ export default function Home() {
             </div>
             <div className="cover-protocol-strip cover-logo-first-strip"><header><span>只允许交付完整封面</span><small>底图是中间文件，不得冒充成品</small></header><div>{coverHarness.steps.map((step, index) => <p key={step}><em>0{index + 1}</em><span><b>{index === 0 ? "先验能力" : index === 1 ? "确定性合成" : "原子交付"}</b><small>{step}</small></span></p>)}</div></div>
             <div className="cover-analysis-grid"><div><span>构图</span><p>{selectedCoverStyle.composition}</p></div><div><span>材质与光线</span><p>{selectedCoverStyle.texture}</p></div><div><span>风格标签</span><p>{coverProtocol.styleTags.join(" · ")}</p></div><div><span>避坑</span><p>{selectedCoverStyle.avoid}</p></div></div>
-            <footer className="cover-workbench-foot"><div className="cover-palette"><span>配色</span>{selectedCoverStyle.palette.map((color) => <i key={color} style={{ background: color }} title={color}/>)}</div><div className="cover-workbench-actions"><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制成品封面指令 V8</button><button className="secondary" onClick={() => { setInspector("封面"); setMobilePane("inspector"); notify("如生图文字不准，可导入无字底图由本机精确合成"); }}><Icon name="assets" size={15}/>文字保险</button></div></footer>
+            <footer className="cover-workbench-foot"><div className="cover-palette"><span>配色</span>{selectedCoverStyle.palette.map((color) => <i key={color} style={{ background: color }} title={color}/>)}</div><div className="cover-workbench-actions"><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制成品封面指令 V8</button><button className="secondary" onClick={() => { setInspector("步骤"); setMobilePane("inspector"); window.requestAnimationFrame(() => inspectorPanelRef.current?.querySelector(".cover-composer-card")?.scrollIntoView({ block: "nearest" })); }}><Icon name="assets" size={15}/>文字保险</button></div></footer>
           </section> : <div className="paper-frame">
             <div className="paper-folio" aria-hidden="true"><span>公众号预览</span><i/>01</div>
-            <article lang="zh-CN" className={`article-page layout-${layoutMode} md-style-${markdownStyle} font-${fontProfile} ${darkPreview ? "wechat-dark-preview" : ""} ${focusMode && selected ? "focus-active" : ""}`} data-md-style={markdownStyle} ref={articleRef}>
-            <header className="article-brandline" data-copy-exclude="wechat"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察 · 第 028 期</span></header>
-            <section {...selectProps(-1, "title")} data-copy-exclude="wechat"><div className="article-title-block"><span className="article-eyebrow">编者按</span><h1>{article.title}</h1><p>{article.subtitle}</p><div className="article-byline"><span>主编：{article.author}</span><i/></div></div></section>
+            <article lang="zh-CN" className={`article-page manuscript-page layout-${layoutMode} md-style-${markdownStyle} font-${fontProfile} ${darkPreview ? "wechat-dark-preview" : ""} ${focusMode && selected ? "focus-active" : ""}`} data-md-style={markdownStyle} ref={articleRef}>
+            <header className="article-brandline" data-copy-exclude="wechat"><div className="article-account"><span>钢</span><div><b>钢铁私塾</b><small>材料 · 产业 · 人物</small></div></div><span className="article-category"><i/>产业观察</span></header>
+            <section {...selectProps(-1, "title")} data-copy-exclude="wechat"><div className="article-title-block"><span className="article-eyebrow">{currentMarkdownStyle.name}</span><h1>{article.title}</h1>{article.subtitle && <p>{article.subtitle}</p>}<div className="article-byline"><span>主编：{article.author}</span><i/></div></div></section>
             <div className="article-body" data-copy-body>
               {article.blocks.map((block, index) => {
-                if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === 1 ? "lead-paragraph" : ""}>{renderInline(block.text)}</p></div>;
-                if (block.type === "heading") { const chapter = article.blocks.slice(0, index + 1).filter((item) => item.type === "heading").length; return <div {...selectProps(index, "heading")} key={`${block.type}-${index}`}><section className="chapter-heading"><span>{String(chapter).padStart(2, "0")}</span><div><small>第 {chapter} 章</small><h2>{block.text}</h2></div></section></div>; }
-                if (block.type === "subheading") return <div {...selectProps(index, "subheading")} key={`${block.type}-${index}`}><h3 className="article-subheading"><span>小节</span>{block.text}</h3></div>;
-                if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`${block.type}-${index}`}><blockquote><span>观点</span><p>{renderInline(block.text)}</p></blockquote></div>;
+                if (block.type === "paragraph") return <div {...selectProps(index, "paragraph")} key={`${block.type}-${index}`}><p className={index === firstParagraphIndex ? "manuscript-lead" : undefined}>{renderInline(block.text)}</p></div>;
+                if (block.type === "heading") {
+                  const style = currentMarkdownStyle.components.heading;
+                  const hasNumber = /^(?:[一二三四五六七八九十百]+[、．.]|\d+[.)、．]\s*|[（(][一二三四五六七八九十\d]+[）)])/u.test(plainInline(block.text));
+                  return <div {...selectProps(index, "heading")} key={`heading-${index}`}>
+                    <section className="manuscript-chapter" data-heading-style={style}>
+                      <h2>{!hasNumber && style !== "plain" && <span className="manuscript-chapter-no" aria-hidden="true">{String(chapterNumbers.get(index)).padStart(2, "0")}</span>}{renderInline(block.text)}</h2>
+                    </section>
+                  </div>;
+                }
+                if (block.type === "subheading") return <div {...selectProps(index, "subheading")} key={`subheading-${index}`}><h3 className="manuscript-subheading">{renderInline(block.text)}</h3></div>;
+                if (block.type === "quote") return <div {...selectProps(index, "quote")} key={`quote-${index}`}><blockquote className="manuscript-quote" data-quote-style={currentMarkdownStyle.components.quote}><p>{renderInline(block.text)}</p></blockquote></div>;
                 if (block.type === "alert") { const labels: Record<AlertKind, string> = { note: "说明", tip: "提示", important: "重要", warning: "注意", caution: "谨慎" }; return <div {...selectProps(index, "alert")} key={`${block.type}-${index}`}><aside className={`article-alert alert-${block.kind}`}><header><i/>{labels[block.kind]}</header><p>{renderInline(block.text)}</p></aside></div>; }
-                if (block.type === "table") return <div {...selectProps(index, "table")} key={`${block.type}-${index}`}><div className="article-table-wrap"><table><thead><tr>{block.headers.map((header, cellIndex) => <th key={`${header}-${cellIndex}`}>{renderInline(header)}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={`row-${rowIndex}`}>{block.headers.map((_, cellIndex) => <td key={`cell-${rowIndex}-${cellIndex}`}>{renderInline(row[cellIndex] ?? "")}</td>)}</tr>)}</tbody></table></div></div>;
+                if (block.type === "table") return <div {...selectProps(index, "table")} key={`table-${index}`}>
+                  <div className="article-table-wrap manuscript-table">
+                    <table style={{ tableLayout: block.headers.length > 4 ? "fixed" : "auto" }}>
+                      <thead><tr>{block.headers.map((header, cellIndex) => <th scope="col" style={{ textAlign: block.alignments[cellIndex] }} key={cellIndex}>{renderInline(header)}</th>)}</tr></thead>
+                      <tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{block.headers.map((_, cellIndex) => <td style={{ textAlign: block.alignments[cellIndex] }} key={cellIndex}>{renderInline(row[cellIndex] ?? "")}</td>)}</tr>)}</tbody>
+                    </table>
+                  </div>
+                </div>;
                 if (block.type === "image") return <div {...selectProps(index, "image")} key={`${block.type}-${index}`}><figure className="article-figure"><img src={block.src} alt={block.alt}/>{block.caption && <figcaption><span>图</span>{block.caption}</figcaption>}</figure></div>;
                 if (block.type === "code") return <div {...selectProps(index, "code")} key={`${block.type}-${index}`}><figure className="article-code"><figcaption><span>{block.language}</span><small>CODE NOTE</small></figcaption><pre><code>{block.code}</code></pre></figure></div>;
-                if (block.type === "divider") return <div {...selectProps(index, "divider")} key={`${block.type}-${index}`}><div className="article-divider" aria-hidden="true"><i/><span>章间留白</span><i/></div></div>;
-                return <div {...selectProps(index, "list")} key={`${block.type}-${index}`}><ol className="designed-list">{block.items.map((item, itemIndex) => <li className={item.checked === undefined ? "" : `task-item ${item.checked ? "task-complete" : ""}`} key={`${item.text}-${itemIndex}`}><span>{item.checked === undefined ? String(itemIndex + 1).padStart(2, "0") : <i aria-label={item.checked ? "已完成" : "未完成"}/>}</span><p><b>{renderInline(item.text)}</b></p></li>)}</ol></div>;
+                if (block.type === "divider") return <div {...selectProps(index, "divider")} key={`divider-${index}`}><hr className="manuscript-divider" /></div>;
+                const List = block.ordered ? "ol" : "ul";
+                return <div {...selectProps(index, "list")} key={`list-${index}`}>
+                  <List className="manuscript-list" data-list-style={currentMarkdownStyle.components.list} start={block.ordered ? block.start : undefined}>
+                    {block.items.map((item, itemIndex) => <li key={itemIndex}>{item.checked !== undefined && <span className="manuscript-task">{item.checked ? "完成" : "待办"}</span>}{renderInline(item.text)}</li>)}
+                  </List>
+                </div>;
+
               })}
               {article.references.length > 0 && <section className="article-references" aria-label="参考资料"><header><span>参考资料</span><small>SOURCES</small></header><ol>{article.references.map((reference) => <li key={`${reference.id}-${reference.url}`}><span>{reference.id.padStart(2, "0")}</span><a href={reference.url}><b>{reference.title}</b><small>{reference.domain}</small></a></li>)}</ol></section>}
               {article.footnotes.length > 0 && <section className="article-footnotes" aria-label="文末注释"><header><span>文末注释</span><small>NOTES</small></header><ol>{article.footnotes.map((footnote) => <li key={footnote.id}><span>{footnote.id}</span><p>{renderInline(footnote.text)}</p></li>)}</ol></section>}
@@ -1320,19 +1365,76 @@ export default function Home() {
       </section>
 
       <aside className="inspector-panel" ref={inspectorPanelRef}>
-        <div className="inspector-tabs" role="tablist">{(["智能", "样式", "封面", "规范", "品牌"] as InspectorTab[]).map((tab, index) => <button key={tab} role="tab" aria-selected={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => { setInspector(tab); if (tab === "封面") { setStage("封面"); setTypesetOpen(false); setSelected(null); } }}><em>0{index + 1}</em><span>{tab}</span><i/></button>)}</div>
-        {inspector === "智能" && <div className="inspector-content">
-          <section className="design-score"><div className="score-ring"><strong>{diagnostics.length}</strong><small>项提醒</small></div><div><span>交付预检</span><p>微信草稿与朋友圈显示待实测。</p></div></section>
-          <div className="delivery-shortcuts" aria-label="微信标题与作者复制"><button className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/><span><b>{copiedField === "标题" ? "标题已复制" : "复制正文标题"}</b><small>{article.title.length}/64 字</small></span></button><button className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/><span><b>{copiedField === "作者" ? "作者已复制" : "复制作者信息"}</b><small>{article.author.length}/8 字</small></span></button></div><p className="copy-delivery-note">按标题、作者、正文的顺序粘贴到微信后台。</p><button className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>复制微信正文</button>
-          <button type="button" className="wechat-html-launch" onClick={openWechatHtml}><Icon name="document" size={17}/>微信 HTML 交付</button>
-          <section className="inspector-section layout-director"><div className="section-heading"><div><span>整稿导演</span><small>一次决定全文密度与节奏</small></div><Icon name="spark" size={17}/></div><div className="strategy-switch">{(["calm", "balanced", "editorial"] as LayoutMode[]).map((mode) => <button key={mode} className={layoutMode === mode ? "active" : ""} aria-pressed={layoutMode === mode} onClick={() => applyLayout(mode)}>{mode === "calm" ? "舒展" : mode === "balanced" ? "均衡" : "编辑部"}<i/></button>)}</div><button className="apply-all" onClick={() => applyLayout(layoutMode)}>执行全文重排<span>不改一个字</span></button></section>
-          <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>发布前复核</span><small>{outline.length} 个章节 · {article.blocks.length} 个正文块</small></div></div>{diagnostics.length > 0 && <ul>{diagnostics.map((item) => <li key={item}><Icon name="warning" size={15}/>{item}</li>)}</ul>}</section>
+        <div className="inspector-tabs editorial-inspector-tabs" role="group" aria-label="工作台面板">
+          {(["步骤", "规范", "品牌"] as InspectorTab[]).map((tab) => <button key={tab} type="button" aria-pressed={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><span>{tab === "步骤" ? stage : tab}</span><i aria-hidden="true"/></button>)}
+        </div>
+        {inspector === "步骤" && <header className="editorial-stage-brief" data-workflow-stage={stage}>
+          <div className="editorial-stage-index"><Icon name={currentStage.icon} size={16}/><span>设计流程</span><b>{String(currentStageIndex + 1).padStart(2, "0")} / 05</b></div>
+          <h2>{currentStage.heading}</h2>
+          <p>{currentStage.goal}</p>
+          {nextStage && <button type="button" className="workflow-next-action editorial-next" onClick={() => activateStage(nextStage.title)}><span>继续 · {nextStage.title}</span><Icon name="chevron" size={15}/></button>}
+        </header>}
+
+        {inspector === "步骤" && stage === "稿件" && <div className="inspector-content editorial-stage-content">
+          <div className="editorial-source-actions">
+            <button type="button" className="editorial-primary" onClick={() => setSourceOpen(true)}><Icon name="document" size={17}/>编辑原稿</button>
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={importingFile}><Icon name="plus" size={17}/>{importingFile ? importProgress || "正在导入" : "导入文件"}</button>
+          </div>
+          <p className="editorial-quiet-note">支持 Markdown、TXT、Word 和 PDF，本机解析。</p>
+          <section className="editorial-manuscript-card" aria-label="稿件识别结果">
+            <span>{article.title === "未命名文章" ? "标题待确认" : "已识别标题"}</span>
+            <strong>{article.title}</strong>
+            <small>{article.author}</small>
+            <dl className="editorial-metrics">
+              <div><dt>字数</dt><dd>{wordCount.toLocaleString()}</dd></div>
+              <div><dt>章节</dt><dd>{structure.chapter}</dd></div>
+              <div><dt>段落</dt><dd>{structure.paragraph}</dd></div>
+            </dl>
+          </section>
+          {[...encodingIssues, ...importWarnings].length > 0 && <ul className="editorial-warnings">{[...new Set([...encodingIssues, ...importWarnings])].map((item) => <li key={item}><Icon name="warning" size={15}/>{item}</li>)}</ul>}
+          {outline.length > 0 && <details className="editorial-draft-outline"><summary>查看稿件提纲</summary>{renderOutline()}</details>}
         </div>}
 
-        {inspector === "样式" && <div className="inspector-content"><section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme].palette; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.palette.paper, color: item.palette.ink }}><i style={{ background: item.palette.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section font-profile-section"><div className="section-heading"><div><span>字体气质</span><small>优先调用可用字库，缺字自动回退</small></div></div><div className="font-profile-grid">{fontProfiles.map((item) => <button key={item.key} className={fontProfile === item.key ? "active" : ""} aria-pressed={fontProfile === item.key} onClick={() => { setFontProfile(item.key); notify(`已切换为“${item.name}”字体气质`); }}><span>{item.sample}</span><div><b>{item.name}</b><small>{item.detail}</small></div><i>{fontProfile === item.key ? "正在使用" : "选择"}</i></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/><label><span><b>标题尺度</b><small>避免标题压住正文</small></span><output>{Math.round(titleScale * 100)}%</output></label><input type="range" min="0.86" max="1.1" step="0.02" value={titleScale} onChange={(event) => setTitleScale(Number(event.target.value))}/><label><span><b>正文字距</b><small>密不逼仄，疏不散漫</small></span><output>{articleTracking.toFixed(3)}</output></label><input type="range" min="0" max="0.04" step="0.002" value={articleTracking} onChange={(event) => setArticleTracking(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+        {inspector === "步骤" && stage === "编排" && <div className="inspector-content editorial-stage-content">
+          <section className="inspector-section editorial-rhythm">
+            <div className="section-heading"><div><span>阅读节奏</span><small>调整段落疏密，原稿与字号保持不动</small></div></div>
+            <div className="editorial-rhythm-options">
+              {([{ key: "calm", name: "舒展", hint: "长文慢读" }, { key: "balanced", name: "均衡", hint: "通用首选" }, { key: "editorial", name: "编辑部", hint: "观点密集" }] as const).map((mode) => <button key={mode.key} type="button" aria-pressed={layoutMode === mode.key} onClick={() => applyLayout(mode.key)}><b>{mode.name}</b><small>{mode.hint}</small></button>)}
+            </div>
+            <dl className="editorial-metrics">
+              <div><dt>章节</dt><dd>{structure.chapter}</dd></div>
+              <div><dt>引用／提示</dt><dd>{structure.quote}</dd></div>
+              <div><dt>表格／列表</dt><dd>{structure.table + structure.list}</dd></div>
+            </dl>
+          </section>
+          <section className="inspector-section editorial-components">
+            <div className="section-heading"><div><span>结构组件</span><small>选用后追加到原稿末尾，可用恢复点撤回</small></div></div>
+            <p className="editorial-quiet-note">推荐：{componentRecommendations.join(" · ")}</p>
+            <label className="editorial-component-search"><Icon name="search" size={15}/><input aria-label="搜索结构组件" value={componentQuery} onChange={(event) => setComponentQuery(event.target.value)} placeholder="搜索导读、判断、证据、步骤"/></label>
+            {filteredComponents.length ? <div className="editorial-component-list">{filteredComponents.map((item) => <button type="button" key={item.kind} onClick={() => insertComponent(item.snippet, item.kind)}><span aria-hidden="true">{item.mark}</span><span><b>{item.kind}</b><small>{item.detail}</small></span><Icon name="plus" size={16}/></button>)}</div> : <p className="editorial-quiet-note">未找到匹配的组件。</p>}
+          </section>
+        </div>}
 
-        {inspector === "封面" && <div className="inspector-content cover-inspector">
+        {inspector === "步骤" && stage === "交付" && <div className="inspector-content editorial-stage-content editorial-delivery">
+          <section className="design-score"><div className="score-ring"><strong>{diagnostics.length}</strong><small>项提醒</small></div><div><span>本地预检</span><p>微信公众号草稿和朋友圈显示需复核。</p></div></section>
+          <div className="delivery-shortcuts" aria-label="微信标题与作者复制">
+            <button type="button" className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/><span><b>{copiedField === "标题" ? "标题已复制" : "01 复制标题"}</b><small>{article.title.length}/64 字</small></span></button>
+            <button type="button" className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/><span><b>{copiedField === "作者" ? "作者已复制" : "02 复制作者"}</b><small>{article.author.length}/8 字</small></span></button>
+          </div>
+          <button type="button" className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>03 复制微信正文</button>
+          <button type="button" className="wechat-html-launch" onClick={openWechatHtml}><Icon name="document" size={17}/>微信 HTML 交付</button>
+          <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>发布前复核</span><small>{structure.chapter} 个章节 · {article.blocks.length} 个正文块</small></div></div>{diagnostics.length > 0 && <ul className="editorial-warnings">{[...new Set(diagnostics)].map((item) => <li key={item}><Icon name="warning" size={15}/>{item}</li>)}</ul>}</section>
+        </div>}
+
+        {inspector === "步骤" && stage === "版式" && <div className="inspector-content editorial-stage-content">
+          {hasArticleBody && <div className="editorial-style-advice"><span>版式建议</span><strong>{markdownStyles[suggestedStyle].name}</strong><small>{styleReason}</small></div>}
+          <section className="inspector-section markdown-style-section"><div className="section-heading"><div><span>Markdown 版式</span><small>内容与皮肤分离，一次替换整套章法</small></div><span className="style-count">{String(markdownStyleOrder.length).padStart(2, "0")}</span></div><div className="markdown-style-gallery">{markdownStyleOrder.map((key, index) => { const item = markdownStyles[key]; const palette = themes[item.theme].palette; return <button key={key} className={markdownStyle === key ? "active" : ""} aria-pressed={markdownStyle === key} onClick={() => applyMarkdownStyle(key)}><span className={`md-style-preview preview-${key}`} style={{ "--preview-accent": palette.accent, "--preview-ink": palette.ink, "--preview-paper": palette.paper } as React.CSSProperties}><i/><b/><b/><small/><small/></span><span className="md-style-copy"><strong>{item.name}</strong><small>{item.description}</small><em>{item.fit}</em></span><span className="md-style-index">{markdownStyle === key ? "已应用" : `0${index + 1}`}</span></button>; })}</div></section><section className="inspector-section"><div className="section-heading"><div><span>纸墨配色</span><small>保留版式，只替换纸色与强调色</small></div></div><div className="theme-grid">{(Object.entries(themes) as [ThemeKey, typeof themes[ThemeKey]][]).map(([key, item]) => <button key={key} className={theme === key ? "active" : ""} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-sample" style={{ background: item.palette.paper, color: item.palette.ink }}><i style={{ background: item.palette.accent }}/><b>Aa</b></span><small>{item.name}</small>{theme === key && <em>当前</em>}</button>)}</div></section><section className="inspector-section font-profile-section"><div className="section-heading"><div><span>字体气质</span><small>优先调用可用字库，缺字自动回退</small></div></div><div className="font-profile-grid">{fontProfiles.map((item) => <button key={item.key} className={fontProfile === item.key ? "active" : ""} aria-pressed={fontProfile === item.key} onClick={() => { setFontProfile(item.key); notify(`已切换为“${item.name}”字体气质`); }}><span>{item.sample}</span><div><b>{item.name}</b><small>{item.detail}</small></div><i>{fontProfile === item.key ? "正在使用" : "选择"}</i></button>)}</div></section><section className="inspector-section control-stack"><label><span><b>正文字号</b><small>建议 16—18px</small></span><output>{fontSize}px</output></label><input type="range" min="15" max="20" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}/><label><span><b>正文行距</b><small>长文需要更多呼吸</small></span><output>{lineHeight.toFixed(2)}</output></label><input type="range" min="1.6" max="2.12" step="0.04" value={lineHeight} onChange={(event) => setLineHeight(Number(event.target.value))}/><label><span><b>标题尺度</b><small>避免标题压住正文</small></span><output>{Math.round(titleScale * 100)}%</output></label><input type="range" min="0.86" max="1.1" step="0.02" value={titleScale} onChange={(event) => setTitleScale(Number(event.target.value))}/><label><span><b>正文字距</b><small>密不逼仄，疏不散漫</small></span><output>{articleTracking.toFixed(3)}</output></label><input type="range" min="0" max="0.04" step="0.002" value={articleTracking} onChange={(event) => setArticleTracking(Number(event.target.value))}/></section><section className="inspector-section transfer-card"><div className="section-heading"><div><span>规则迁移</span><small>从一个内容块同步到所有同类</small></div><Icon name="brush" size={17}/></div><p>{capturedType ? `已采集：${blockLabel(capturedType)}` : "在画布中选择内容块，然后采集它的编排规则。"}</p><div><button onClick={captureStyle}>采集当前</button><button className="strong" onClick={applyCapturedStyle}>同步同类</button></div></section></div>}
+
+        {inspector === "步骤" && stage === "封面" && <div className="inspector-content cover-inspector editorial-stage-content">
+          <section className="editorial-cover-selection"><span>当前方向</span><strong>{selectedCoverLabel.name}</strong><small>{effectiveCoverCompany ? "企业稿 · 使用官方 Logo 原图" : "非企业稿 · 保留原题与署名"}</small></section>
           <section className="cover-reading-card"><header><span><Icon name="spark" size={15}/>文章画像</span><small>已分析标题与正文语义</small></header><div><b>{coverProfile.subject}</b><b>{coverProfile.tone}</b><b>{coverProfile.intent}</b></div><p>{coverProfile.signals.length ? `识别线索：${coverProfile.signals.join("、")}` : "当前稿件线索较少，先按深度观点类内容推荐。"}</p></section>
+          <section className="inspector-section cover-recommend-section"><div className="section-heading"><div><span>首选方案</span><small>按题材、语气与传播目的推荐</small></div><span className="suggestion-count">03</span></div><div className="cover-recommend-list">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><strong>{label.name}</strong><small>{item.reason.replace(item.style.name, label.name)}</small></span><b>{item.score}</b></button>; })}</div></section>
+          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverLabel.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>标题</dt><dd>最终图片必须逐字出现“{article.title}”；缺标题即为失败。</dd></div><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制成品封面指令 V8</button></section>
           <section className={`cover-brand-card ${effectiveCoverCompany ? "enterprise" : "generic"}`}>
             <div className="section-heading"><div><span>企业 Logo 素材</span><small>只有明确企业，才进入 Logo 流程</small></div><span className="cover-brand-state">{effectiveCoverCompany ? "企业已确认" : hasPendingCoverCompany ? "候选待确认" : "非企业文章"}</span></div>
             <label htmlFor="cover-company"><span>企业主体（高置信度自动识别）</span><small>行业词、月份、排产、价格不会被当成企业</small></label>
@@ -1351,8 +1453,6 @@ export default function Home() {
             <button className="cover-compose-button" disabled={!canComposeCover} onClick={composeFinalCover}><Icon name="publish" size={16}/>生成最终封面 PNG</button>
             <p><Icon name="check" size={15}/><span>标题和“{coverSignature}”由本机 Canvas 逐字排印；Logo 直接读取上传原图，只做等比缩放，不经过生图模型。</span></p>
           </section>
-          <section className="inspector-section cover-recommend-section"><div className="section-heading"><div><span>首选方案</span><small>推荐不是审判，理由必须说得明白</small></div><span className="suggestion-count">03</span></div><div className="cover-recommend-list">{coverRecommendations.map((item, index) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.style.id); const label = coverStyleLabel(item.style); return <button key={item.style.id} className={selectedCoverStyle.id === item.style.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.style.id} onClick={() => setCoverStyleId(item.style.id)}><em>0{index + 1}</em><CoverStyleSpecimen style={item.style} index={styleIndex} compact/><span><strong>{label.name}</strong><small>{item.reason.replace(item.style.name, label.name)}</small></span><b>{item.score}</b></button>; })}</div></section>
-          <section className="inspector-section cover-selected-card"><div className="section-heading"><div><span>当前设计建议</span><small>{selectedCoverLabel.short} · {selectedCoverStyle.fit}</small></div></div><dl><div><dt>标题</dt><dd>最终图片必须逐字出现“{article.title}”；缺标题即为失败。</dd></div><div><dt>构图</dt><dd>{selectedCoverStyle.composition}</dd></div><div><dt>材质</dt><dd>{selectedCoverStyle.texture}</dd></div><div><dt>避坑</dt><dd>{selectedCoverStyle.avoid}</dd></div></dl><button onClick={copyCoverPrompt}><Icon name="copy" size={15}/>复制成品封面指令 V8</button></section>
           <section className="inspector-section cover-library"><div className="section-heading cover-library-heading"><div><span>视觉语言索引</span><small>24 种媒介气质，不是 24 张换色皮肤</small></div><span className="style-count">24</span></div><div className="cover-category-filter" aria-label="筛选封面视觉语言">{coverStyleCategories.map((category) => { const count = category === "全部" ? coverStyles.length : coverStyles.filter((item) => item.category === category).length; return <button key={category} className={coverCategory === category ? "active" : ""} aria-pressed={coverCategory === category} onClick={() => setCoverCategory(category)}><span>{category}</span><em>{String(count).padStart(2, "0")}</em></button>; })}</div><div className="cover-style-library">{filteredCoverStyles.map((item) => { const styleIndex = coverStyles.findIndex((style) => style.id === item.id); const label = coverStyleLabel(item); return <button key={item.id} className={selectedCoverStyle.id === item.id ? "active" : ""} aria-pressed={selectedCoverStyle.id === item.id} onClick={() => setCoverStyleId(item.id)}><CoverStyleSpecimen style={item} index={styleIndex}/><span className="cover-style-library-copy"><span><em>{item.category}</em><small>{String(styleIndex + 1).padStart(2, "0")}</small></span><b>{label.name}</b><p>{label.short}</p></span></button>; })}</div></section>
         </div>}
 
@@ -1378,13 +1478,11 @@ export default function Home() {
           </section>
         </div>}
 
-        {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.palette.accent }}/>当前主题<button onClick={() => setInspector("样式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.palette.ink }}/>墨黑<button onClick={() => setInspector("样式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => notify("品牌署名编辑将在下一版开放")}>编辑</button></label><label><span>结尾</span><b>品牌宣言 + 交流声明</b><button onClick={() => notify("品牌结尾编辑将在下一版开放")}>编辑</button></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><div className="brand-consistency"><strong>100%</strong><div><i/><span>颜色、署名与语气均一致</span></div></div></section></div>}
+        {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.palette.accent }}/>当前主题<button onClick={() => activateStage("版式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.palette.ink }}/>墨黑<button onClick={() => activateStage("版式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => setSourceOpen(true)}>编辑</button></label><label><span>结尾</span><b>品牌宣言 + 交流声明</b></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><p className="editorial-quiet-note">当前用色：{currentTheme.name}；稿件署名：{article.author}。</p></section></div>}
       </aside>
 
-      <nav className="mobile-dock" aria-label="手机工作区">
-        <button className={mobilePane === "workflow" ? "active" : ""} aria-current={mobilePane === "workflow" ? "page" : undefined} onClick={() => setMobilePane("workflow")}><Icon name="structure" size={20}/><span>流程</span><small>{stage}</small></button>
-        <button className={mobilePane === "canvas" ? "active" : ""} aria-current={mobilePane === "canvas" ? "page" : undefined} onClick={() => setMobilePane("canvas")}><Icon name="document" size={20}/><span>阅读</span><small>{workspaceView === "final" ? "成稿" : "校订"}</small></button>
-        <button className={mobilePane === "inspector" ? "active" : ""} aria-current={mobilePane === "inspector" ? "page" : undefined} onClick={() => setMobilePane("inspector")}><Icon name="style" size={20}/><span>调整</span><small>{inspector}</small></button>
+      <nav className="mobile-dock" aria-label="手机设计流程">
+        {stageItems.map((item) => <button key={item.title} type="button" className={stage === item.title ? "active" : ""} aria-current={stage === item.title ? "step" : undefined} onClick={() => activateStage(item.title)}><Icon name={item.icon} size={18}/><span>{item.title}</span></button>)}
       </nav>
 
       {htmlDelivery && <WechatHtmlDialog delivery={htmlDelivery} filename={`${safeDownloadName(htmlDelivery.title)}-微信正文.html`} onClose={() => setHtmlDelivery(null)} />}

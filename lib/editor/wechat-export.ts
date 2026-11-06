@@ -31,7 +31,7 @@ export function readWechatPlainText(root: Node): string {
     gap = 0;
     parts.push(text);
   }
-  function visit(node: Node) {
+  function visit(node: Node, marker = "") {
     if (node.nodeType === 3) { append(node.textContent ?? ""); return; }
     if (node.nodeType !== 1) return;
     const element = node as Element;
@@ -40,9 +40,19 @@ export function readWechatPlainText(root: Node): string {
     if (tag === "IMG") { append(element.getAttribute("alt") ?? ""); return; }
     const boundary = tag === "LI" || tag === "TR" ? 1 : blockTags.has(tag) ? 2 : 0;
     gap = Math.max(gap, boundary);
+    if (marker) append(marker);
     if (tag === "PRE") append(element.textContent ?? "");
     else if (tag === "TR") Array.from(element.children).forEach((cell, index) => { if (index) append("\t"); visit(cell); });
-    else element.childNodes.forEach(visit);
+    else if (tag === "OL" || tag === "UL") {
+      const list = element as HTMLElement;
+      const hasMarkers = list.style.listStyleType !== "none";
+      let position = Number(list.getAttribute("start") ?? 1);
+      list.childNodes.forEach((child) => {
+        const isItem = child.nodeType === 1 && (child as Element).tagName === "LI";
+        visit(child, hasMarkers && isItem ? tag === "OL" ? position + ". " : "• " : "");
+        if (isItem) position++;
+      });
+    } else element.childNodes.forEach((child) => visit(child));
     gap = Math.max(gap, boundary);
   }
   visit(root);
