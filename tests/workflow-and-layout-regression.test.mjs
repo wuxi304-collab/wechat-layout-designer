@@ -16,7 +16,7 @@ test("主工作流只有稿件、编排、版式、封面、交付五步", () =>
   assert.match(page, /type StageKey = "稿件" \| "编排" \| "版式" \| "封面" \| "交付"/);
   assert.match(page, /title: "稿件"[\s\S]*title: "编排"[\s\S]*title: "版式"[\s\S]*title: "封面"[\s\S]*title: "交付"/);
   assert.doesNotMatch(page, /title: "组件"/);
-  assert.match(page, /className="workflow-next-action"/);
+  assert.match(page, /className="workflow-next-action editorial-next"/);
 });
 
 test("结构组件按文章任务收敛，并根据正文语义给出推荐", () => {

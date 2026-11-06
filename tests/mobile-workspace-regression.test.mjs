@@ -2,21 +2,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("mobile workspace uses one visible pane and a touch dock", async () => {
-  const [page, css, html] = await Promise.all([
+test("mobile exposes the same five stages and a separate reading toggle", async () => {
+  const [page, css, editorial, html] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/editorial-workflow.css", import.meta.url), "utf8"),
     readFile(new URL("../github-pages/index.html", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /type MobilePane = "workflow" \| "canvas" \| "inspector"/);
-  assert.match(page, /className="mobile-dock"/);
+  assert.match(page, /type MobilePane = "canvas" \| "inspector"/);
+  assert.match(page, /className="mobile-dock" aria-label="手机设计流程">[\s\S]*stageItems\.map/);
   assert.match(page, /mobile-pane-\$\{mobilePane\}/);
   assert.match(page, /window\.matchMedia\("\(max-width: 840px\)"\)/);
   assert.match(page, /setWorkspaceView\("final"\)/);
-  assert.match(page, />流程<\/span>/);
-  assert.match(page, />阅读<\/span>/);
-  assert.match(page, />调整<\/span>/);
+  assert.match(page, /className="mobile-surface-toggle" onClick=\{toggleMobileSurface\}/);
+  assert.match(editorial, /\.editorial-studio \.mobile-dock \{ grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(page, /brand-title-mobile">钢铁私塾排版/);
   assert.match(page, /delivery-label-mobile">检查/);
   assert.match(page, /left-input \$\{markdown\.trim\(\) \? "has-draft" : "is-empty"\}/);
@@ -63,7 +63,7 @@ test("plain text copy has an iPhone-safe synchronous fallback and visible feedba
   assert.match(clipboard, /document\.execCommand\("copy"\)/);
   assert.match(clipboard, /navigator\.clipboard\?\.writeText/);
   assert.ok(
-    clipboard.indexOf("copyWithSelection(text)") < clipboard.indexOf("navigator.clipboard?.writeText"),
+    clipboard.indexOf("copyWithSelection(text, host)") < clipboard.indexOf("navigator.clipboard?.writeText"),
     "selection fallback must run in the original tap stack before async clipboard access",
   );
 });

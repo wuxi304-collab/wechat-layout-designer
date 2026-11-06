@@ -13,11 +13,11 @@ export const WECHAT_SAFE_STYLE_PROPERTIES = [
   ...WECHAT_FIXED_DIMENSION_PROPERTIES,
 ] as const;
 
-const INTERNAL_ATTRIBUTES = ["class", "id", "tabindex", "role", "data-md-style", "data-block-index"];
+const INTERNAL_ATTRIBUTES = ["class", "id", "tabindex", "role", "data-md-style", "data-block-index", "data-heading-style", "data-quote-style", "data-list-style"];
 
 const FIXED_LENGTH = /^-?\d*\.?\d+(?:px|pt|pc|cm|mm|in)$/i;
-const PROSE_CONTAINER_SELECTOR = "p,figcaption";
-const PROSE_INLINE_SELECTOR = ":is(p,figcaption) :is(strong,b,em,i,s,del,a,span,sup,sub,code)";
+const PROSE_CONTAINER_SELECTOR = "p,figcaption,li,th,td";
+const PROSE_INLINE_SELECTOR = ":is(p,figcaption,li,th,td) :is(strong,b,em,i,s,del,a,span,sup,sub,code)";
 const TIMELINE_TEXT_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th";
 
 export function applyWechatTimelineTextSafety(root: HTMLElement) {
@@ -160,7 +160,7 @@ export function inlineWechatSafeStyles(source: HTMLElement, clone: HTMLElement) 
   return clone;
 }
 
-function copyRichWithSelection(html: string, plainText: string) {
+function copyRichWithSelection(html: string, plainText: string, host?: HTMLElement | null) {
   if (typeof document === "undefined" || !document.body || typeof document.execCommand !== "function") return false;
   const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const selection = window.getSelection();
@@ -172,7 +172,7 @@ function copyRichWithSelection(html: string, plainText: string) {
   // 连同计算后的宽度复制到微信，造成正文一字一行。
   container.style.cssText = "position:fixed;left:0;top:-200vh;width:100vw;min-height:1px;overflow:visible;white-space:normal;pointer-events:none;";
   container.innerHTML = html;
-  document.body.appendChild(container);
+  (host ?? document.body).appendChild(container);
 
   const range = document.createRange();
   range.selectNodeContents(container);
@@ -190,6 +190,8 @@ function copyRichWithSelection(html: string, plainText: string) {
   document.addEventListener("copy", onCopy);
   try {
     copied = document.execCommand("copy");
+  } catch {
+    copied = false;
   } finally {
     document.removeEventListener("copy", onCopy);
     container.remove();
@@ -200,15 +202,15 @@ function copyRichWithSelection(html: string, plainText: string) {
   return copied && suppliedHtml;
 }
 
-export async function writeRichClipboard(html: string, plainText: string) {
+export async function writeRichClipboard(html: string, plainText: string, host?: HTMLElement | null) {
   // iOS / 微信内置 WebView 常没有 ClipboardItem，但仍支持在点击手势中复制富文本选区。
   // 必须先同步尝试，不能 await 之后再补救，否则浏览器会撤销复制权限。
-  if (copyRichWithSelection(html, plainText)) return "selection" as const;
+  if (copyRichWithSelection(html, plainText, host)) return "selection" as const;
 
   if (window.ClipboardItem && navigator.clipboard?.write) {
     await navigator.clipboard.write([new ClipboardItem({
-      "text/html": new Blob([html], { type: "text/html;charset=utf-8" }),
-      "text/plain": new Blob([plainText], { type: "text/plain;charset=utf-8" }),
+      "text/html": new Blob([html], { type: "text/html" }),
+      "text/plain": new Blob([plainText], { type: "text/plain" }),
     })]);
     return "clipboard" as const;
   }

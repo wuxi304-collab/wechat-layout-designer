@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import Home from "../app/page";
 import "../app/globals.css";
+import "../app/wechat-html.css";
+import "../app/editorial-workflow.css";
 
 const root = document.getElementById("root");
 

@@ -2,21 +2,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("copy actions sit immediately below the design score", async () => {
+test("delivery presents the copy actions in the order used by the WeChat editor", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const smartPanel = source.slice(source.indexOf('{inspector === "智能"'), source.indexOf('{inspector === "样式"'));
-  const scoreIndex = smartPanel.indexOf('className="design-score"');
-  const deliveryIndex = smartPanel.indexOf('className="delivery-shortcuts"');
-  const directorIndex = smartPanel.indexOf('className="inspector-section layout-director"');
-
-  assert.ok(scoreIndex >= 0);
-  assert.ok(deliveryIndex > scoreIndex);
-  assert.ok(directorIndex > deliveryIndex);
+  const deliveryPanel = source.slice(source.indexOf('className="inspector-content editorial-stage-content editorial-delivery"'), source.indexOf('{inspector === "步骤" && stage === "版式"'));
+  assert.match(deliveryPanel, /本地预检[\s\S]*01 复制标题[\s\S]*02 复制作者[\s\S]*03 复制微信正文[\s\S]*微信 HTML 交付/);
 });
 
 test("source toolbar follows clear, paste, analyze, import order", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const actions = source.slice(source.indexOf('className="source-actions"'), source.indexOf('</header><textarea'));
+  const actions = source.slice(source.indexOf('className="source-actions"'), source.indexOf('</header><SourceWorkspace'));
   const clearIndex = actions.indexOf("clear-action");
   const pasteIndex = actions.indexOf("paste-action");
   const analyzeIndex = actions.indexOf("analyze-action");
@@ -36,6 +30,5 @@ test("one tap paste writes, analyzes, and leaves the source drawer", async () =>
   assert.match(handler, /navigator\.clipboard\.readText\(\)/);
   assert.match(handler, /parseArticle\(nextMarkdown\)/);
   assert.match(handler, /setSourceOpen\(false\)/);
-  assert.match(handler, /setStage\("编排"\)/);
-  assert.match(handler, /setMobilePane\("canvas"\)/);
+  assert.match(handler, /activateStage\("编排"\)/);
 });
