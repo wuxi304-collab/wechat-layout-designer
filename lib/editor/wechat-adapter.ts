@@ -17,7 +17,7 @@ const INTERNAL_ATTRIBUTES = ["class", "id", "tabindex", "role", "data-md-style",
 
 const FIXED_LENGTH = /^-?\d*\.?\d+(?:px|pt|pc|cm|mm|in)$/i;
 const PROSE_CONTAINER_SELECTOR = "p,figcaption,li,th,td";
-const PROSE_INLINE_SELECTOR = ":is(p,figcaption,li,th,td) :is(strong,b,em,i,s,del,a,span,sup,sub,code)";
+const PROSE_INLINE_SELECTOR = ":is(p,figcaption,li,th,td) :is(strong,b,em,i,s,del,a,span,sup,sub,code,u,mark)";
 const TIMELINE_TEXT_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th";
 
 export function applyWechatTimelineTextSafety(root: HTMLElement) {

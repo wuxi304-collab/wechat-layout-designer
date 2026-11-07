@@ -54,9 +54,9 @@ export const themes = {
     dark: { paper: "#1d1c1a", ink: "#eeeae1", muted: "#aaa398", accent: "#d97a69", line: "#47423d", soft: "#292622" },
   },
   industrial: {
-    name: "雨苔纪要",
-    palette: { accent: "#536b62", ink: "#252b28", paper: "#f4f5f0", muted: "#6c756f", line: "#d4d9d4", soft: "#e9eeea" },
-    dark: { paper: "#171c1a", ink: "#e9efeb", muted: "#a3afa8", accent: "#8eae9f", line: "#39443f", soft: "#202925" },
+    name: "青蓝纪要",
+    palette: { accent: "#285e80", ink: "#252b28", paper: "#f4f5f0", muted: "#6c756f", line: "#d4d9d4", soft: "#e9eeea" },
+    dark: { paper: "#171c1a", ink: "#e9efeb", muted: "#a3afa8", accent: "#95bdd6", line: "#39443f", soft: "#202925" },
   },
   eastern: {
     name: "江南纸墨",
@@ -84,9 +84,9 @@ export type ThemeKey = keyof typeof themes;
 
 export const markdownStyles = {
   jiangnan: { name: "叙事书札", short: "书札", description: "疏朗题签 · 文气章节 · 注脚式引文", fit: "人物、企业与产业故事", theme: "eastern", layout: "calm", fontProfile: "classic", typography: { bodySize: 18, lineHeight: 1.92, titleScale: 1, tracking: .008 }, components: { heading: "chapter", quote: "letter", list: "ordered" } },
-  editorial: { name: "社论手记", short: "社论", description: "强题破局 · 横线分章 · 拉引成势", fit: "评论、趋势与市场判断", theme: "editorial", layout: "editorial", fontProfile: "classic", typography: { bodySize: 18, lineHeight: 1.82, titleScale: 1.02, tracking: .004 }, components: { heading: "rule", quote: "editorial", list: "ledger" } },
+  editorial: { name: "社论手记", short: "社论", description: "强题破局 · 横线分章 · 拉引成势", fit: "评论、趋势与市场判断", theme: "editorial", layout: "editorial", fontProfile: "clear", typography: { bodySize: 18, lineHeight: 1.82, titleScale: 1.02, tracking: .004 }, components: { heading: "rule", quote: "editorial", list: "ledger" } },
   technical: { name: "技术纪要", short: "纪要", description: "编号分层 · 参数成组 · 证据优先", fit: "标准、材料与数据分析", theme: "industrial", layout: "balanced", fontProfile: "clear", typography: { bodySize: 17, lineHeight: 1.84, titleScale: 1, tracking: 0 }, components: { heading: "index", quote: "note", list: "ledger" } },
-  essay: { name: "深读长卷", short: "长卷", description: "题跋居中 · 缓章慢读 · 引文成景", fit: "深度长文与个人专栏", theme: "editorial", layout: "calm", fontProfile: "literary", typography: { bodySize: 18, lineHeight: 1.96, titleScale: 1.03, tracking: .01 }, components: { heading: "centered", quote: "essay", list: "minimal" } },
+  essay: { name: "深读长卷", short: "长卷", description: "题跋居中 · 缓章慢读 · 引文成景", fit: "深度长文与个人专栏", theme: "collage", layout: "calm", fontProfile: "literary", typography: { bodySize: 18, lineHeight: 1.96, titleScale: 1.03, tracking: .01 }, components: { heading: "centered", quote: "essay", list: "minimal" } },
   minimal: { name: "清简快报", short: "快报", description: "去饰留序 · 短段快读 · 信息直达", fit: "快讯、短评与信息清单", theme: "minimal", layout: "balanced", fontProfile: "clear", typography: { bodySize: 18, lineHeight: 1.82, titleScale: .98, tracking: 0 }, components: { heading: "plain", quote: "note", list: "minimal" } },
 } satisfies Record<string, MarkdownStyle>;
 

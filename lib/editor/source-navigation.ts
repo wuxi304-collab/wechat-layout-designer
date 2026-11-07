@@ -7,6 +7,16 @@ export function isCompositionKey(event: { isComposing?: boolean; keyCode?: numbe
   return Boolean(event.isComposing || event.keyCode === 229 || event.key === "Process");
 }
 
+export function toggleSourceAnnotation(source: string, range: SourceRange, kind: "underline" | "highlight") {
+  const opening = kind === "underline" ? "<u>" : "==", closing = kind === "underline" ? "</u>" : "==";
+  const text = source.slice(range.start, range.end);
+  if (!text.trim() || text !== text.trim() || /[\r\n]/.test(text)) return null;
+  if (source.slice(range.start - opening.length, range.start) === opening && source.slice(range.end, range.end + closing.length) === closing) {
+    return { text: source.slice(0, range.start - opening.length) + text + source.slice(range.end + closing.length), start: range.start - opening.length, end: range.end - opening.length };
+  }
+  return { text: source.slice(0, range.start) + opening + text + closing + source.slice(range.end), start: range.start + opening.length, end: range.end + opening.length };
+}
+
 export function readSourceHeadings(source: string): SourceHeading[] {
   const lines = Array.from(source.matchAll(/([^\r\n]*)(?:\r\n|\r|\n|$)/g));
   const headings: SourceHeading[] = [];

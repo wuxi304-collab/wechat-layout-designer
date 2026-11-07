@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findSourceMatches, isCompositionKey, readSourceHeadings, replaceSourceMatches, toggleSourceEmphasis } from "../lib/editor/source-navigation.ts";
+import { findSourceMatches, isCompositionKey, readSourceHeadings, replaceSourceMatches, toggleSourceAnnotation, toggleSourceEmphasis } from "../lib/editor/source-navigation.ts";
+
+test("highlight and underline preserve source and can toggle off without changing emphasis", () => {
+  const source = "前文 **316L** 后文";
+  for (const kind of ["underline", "highlight"]) {
+    const next = toggleSourceAnnotation(source, { start: 3, end: 11 }, kind);
+    assert.equal(next.text.slice(next.start, next.end), "**316L**");
+    assert.equal(toggleSourceAnnotation(next.text, next, kind).text, source);
+  }
+  assert.equal(toggleSourceAnnotation("甲\n乙", {start:0,end:3}, "highlight"), null);
+});
 
 test("IME candidate Enter and Process keys do not trigger source commands", () => {
   assert.equal(isCompositionKey({ key: "Enter", keyCode: 229 }), true);

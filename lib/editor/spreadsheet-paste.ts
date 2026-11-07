@@ -33,7 +33,7 @@ export function readClipboardGrid(text: string): string[][] | null {
 }
 
 function cellMarkdown(text: string) {
-  return text.replace(/\\/g, "\\\\").replace(/([`*_~\[\]<>])/g, "\\$1").replace(/\|/g, "\\|").replace(/\r\n?|\n/g, "<br>");
+  return text.replace(/\\/g, "\\\\").replace(/([=`*_~\[\]<>])/g, "\\$1").replace(/\|/g, "\\|").replace(/\r\n?|\n/g, "<br>");
 }
 
 export function gridMarkdown(rows: string[][], alignments: string[] = [], formatted = false): SpreadsheetPaste {
@@ -58,6 +58,8 @@ function htmlGrid(html: string): SpreadsheetPaste | null {
   let result: SpreadsheetPaste | null = null, count = 0;
   const converter = new TurndownService();
   const cells = new TurndownService({ strongDelimiter: "**", emDelimiter: "*", codeBlockStyle: "fenced" });
+  const escapeCell = cells.escape.bind(cells);
+  cells.escape = (text) => escapeCell(text).replace(/=/g, "\\=");
   cells.remove(["script", "style", "button", "iframe", "object", "form", "input"]);
   cells.addRule("cellBreak", { filter: "br", replacement: () => "\n" });
   cells.addRule("cellBold", {
