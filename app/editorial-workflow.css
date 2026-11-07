@@ -445,3 +445,23 @@
   .source-find { gap: 4px; }
   .source-replace input { flex-basis: 100%; }
 }
+
+/* Five editorial voices; semantic emphasis travels with inline WeChat export. */
+.manuscript-page :is(p,li,td,th) strong { color: var(--article-accent); font-weight: 750; }
+.manuscript-page .article-highlight { color: var(--article-ink); background: #f7e7b4; padding: .04em .12em; font-weight: 650; border-radius: 2px; }
+.manuscript-page .article-underline { text-decoration: underline; text-decoration-color: var(--article-accent); text-underline-offset: .22em; text-decoration-thickness: 1px; }
+.manuscript-page.md-style-editorial .article-highlight { background: #f6deda; color: #6f2d29; }
+.manuscript-page.md-style-editorial .manuscript-subheading { border-left: 3px solid var(--article-accent); padding-left: .6em; }
+.manuscript-page.md-style-technical .article-highlight { background: #dfeef6; color: #214d69; }
+.manuscript-page.md-style-technical .inline-code { color: #214d69; background: #e9f0f5; font-variant-numeric: tabular-nums; }
+.manuscript-page.md-style-technical .manuscript-subheading { font-variant-numeric: tabular-nums; }
+.manuscript-page.md-style-essay .article-highlight { background: #eee0bd; color: #604c2e; }
+.manuscript-page.md-style-essay .manuscript-subheading { text-align: center; letter-spacing: .05em; }
+.manuscript-page.md-style-minimal .article-highlight { background: #e2ebe9; color: #294f4b; }
+.manuscript-page.md-style-minimal :is(p,li) strong { color: var(--article-ink); font-weight: 800; }
+.manuscript-page.wechat-dark-preview .article-highlight { background: var(--article-soft); color: var(--article-ink); }
+.style-craft-guide { margin-bottom: 18px; padding: 14px; border-block: 1px solid var(--stage-line); color: var(--stage-ink); background: var(--stage-paper); }
+.style-craft-guide > strong { font-size: 16px; }
+.style-craft-guide > p { font: 400 14px/1.8 var(--font-ui); }
+.style-craft-guide .manuscript-page p { font-size: 16px; line-height: 2; }
+.style-craft-guide > small { color: var(--stage-muted); font: 400 12px/1.7 var(--font-ui); }

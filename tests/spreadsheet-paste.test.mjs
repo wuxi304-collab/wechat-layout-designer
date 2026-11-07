@@ -54,7 +54,7 @@ test("Office cell emphasis, inline code, links and numeric spelling survive toge
 
 test("literal Office cell text stays literal and unsafe link destinations are omitted", () => {
   const table = spreadsheetFromClipboard("", '<table><tr><td>原文</td><td>备注</td></tr><tr><td>**原样** | =SUM(A1)</td><td><a href="javascript:alert(1)">保留文字</a></td></tr></table>');
-  assert.ok(table.markdown.includes('\\*\\*原样\\*\\* \\| =SUM(A1)'));
+  assert.ok(table.markdown.includes('\\*\\*原样\\*\\* \\| \\=SUM(A1)'));
   assert.ok(table.markdown.includes('保留文字'));
   assert.ok(!table.markdown.includes('javascript:'));
 });

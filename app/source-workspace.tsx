@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { findSourceMatches, isCompositionKey, readSourceHeadings, replaceSourceMatches, toggleSourceEmphasis, type SourceRange } from "@/lib/editor/source-navigation";
+import { findSourceMatches, isCompositionKey, toggleSourceAnnotation, readSourceHeadings, replaceSourceMatches, toggleSourceEmphasis, type SourceRange } from "@/lib/editor/source-navigation";
 import { sourceIsLiteral, spreadsheetFromClipboard, tableInsertion } from "@/lib/editor/spreadsheet-paste";
 
 function revealRange(editor: HTMLTextAreaElement, range: SourceRange) {
@@ -134,6 +134,14 @@ export function SourceWorkspace({ value, active = true, onChange, onCheckpoint }
     commit(next.text, next);
   }
 
+  function annotate(kind: "underline" | "highlight") {
+    if (!editor.current || composing.current) return;
+    rangeBeforeInput.current = { start: editor.current.selectionStart, end: editor.current.selectionEnd };
+    const next = toggleSourceAnnotation(value, rangeBeforeInput.current, kind);
+    if (!next) return setHint("请先选中一段不跨行的文字。");
+    commit(next.text, next); setHint("已更新强调样式，可再次点击取消或撤销。");
+  }
+
   function shortcuts(event: KeyboardEvent<HTMLDivElement>) {
     if (composing.current || isCompositionKey(event.nativeEvent)) return;
     const key = event.key.toLowerCase();
@@ -162,6 +170,8 @@ export function SourceWorkspace({ value, active = true, onChange, onCheckpoint }
       <span className="source-proof-divider" aria-hidden="true" />
       <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("**")}><b>加粗</b></button>
       <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("*")}><i>斜体</i></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => annotate("underline")}>下划线</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => annotate("highlight")}>高亮</button>
       <span className="source-proof-divider" aria-hidden="true" />
       <button type="button" disabled={!history.current.past.length} onMouseDown={(event) => event.preventDefault()} onClick={() => travel("past")}>撤销</button>
       <button type="button" disabled={!history.current.future.length} onMouseDown={(event) => event.preventDefault()} onClick={() => travel("future")}>重做</button>
