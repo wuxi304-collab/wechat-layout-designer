@@ -36,17 +36,38 @@ function cellMarkdown(text: string) {
   return text.replace(/\\/g, "\\\\").replace(/([`*_~\[\]<>])/g, "\\$1").replace(/\|/g, "\\|").replace(/\r\n?|\n/g, "<br>");
 }
 
-export function gridMarkdown(rows: string[][], alignments: string[] = []): SpreadsheetPaste {
+export function gridMarkdown(rows: string[][], alignments: string[] = [], formatted = false): SpreadsheetPaste {
   const columns = Math.max(...rows.map((row) => row.length));
   if (!rows.length || !columns || rows.length * columns > MAX_CELLS) throw new Error("表格为空或超过 5,000 个单元格，请拆分后粘贴。");
-  const serialize = (row: string[]) => `| ${Array.from({ length: columns }, (_, index) => cellMarkdown(row[index] ?? "")).join(" | ")} |`;
+  const serialize = (row: string[]) => `| ${Array.from({ length: columns }, (_, index) => formatted ? formattedCell(row[index] ?? "") : cellMarkdown(row[index] ?? "")).join(" | ")} |`;
   const rule = `| ${Array.from({ length: columns }, (_, index) => ({ right: "---:", center: ":---:", left: ":---" })[alignments[index]] ?? "---").join(" | ")} |`;
   return { markdown: [serialize(rows[0]), rule, ...rows.slice(1).map(serialize)].join("\n"), rows: rows.length, columns, merged: false };
+}
+
+function formattedCell(value: string) {
+  let result = "", slashes = 0;
+  for (const character of value.replace(/\r\n?|\n/g, "<br>")) {
+    if (character === "|" && slashes % 2 === 0) result += "\\";
+    result += character;
+    slashes = character === "\\" ? slashes + 1 : 0;
+  }
+  return result;
 }
 
 function htmlGrid(html: string): SpreadsheetPaste | null {
   let result: SpreadsheetPaste | null = null, count = 0;
   const converter = new TurndownService();
+  const cells = new TurndownService({ strongDelimiter: "**", emDelimiter: "*", codeBlockStyle: "fenced" });
+  cells.remove(["script", "style", "button", "iframe", "object", "form", "input"]);
+  cells.addRule("cellBreak", { filter: "br", replacement: () => "\n" });
+  cells.addRule("cellBold", {
+    filter: (node) => node.nodeName === "SPAN" && /font-weight\s*:\s*(?:bold|[6-9]00)\b/i.test(node.getAttribute("style") ?? ""),
+    replacement: (content) => `**${content}**`,
+  });
+  cells.addRule("cellLink", { filter: "a", replacement: (content, node) => {
+    const href = node.getAttribute("href") ?? "";
+    return /^https?:\/\/[^\s<>]+$/i.test(href) && !/[()]/.test(href) ? `[${content}](${href})` : content;
+  } });
   converter.remove(["script", "style", "button", "iframe", "object", "form", "input"]);
   converter.addRule("spreadsheet", { filter: "table", replacement: (_content, node) => {
     count++;
@@ -65,8 +86,7 @@ function htmlGrid(html: string): SpreadsheetPaste | null {
         if (span > 1 || height > 1) merged = true;
         const clone = cell.cloneNode(true) as HTMLElement;
         Array.from(clone.querySelectorAll("script,style,button,input")).forEach((child) => child.parentNode?.removeChild(child));
-        Array.from(clone.querySelectorAll("br")).forEach((br) => br.parentNode?.replaceChild(clone.ownerDocument.createTextNode("\n"), br));
-        const text = clone.textContent ?? "";
+        const text = cells.turndown(clone.innerHTML).trim();
         for (let down = 0; down < height; down++) for (let across = 0; across < span; across++) {
           if (grid[rowIndex + down][column + across] !== undefined) throw new Error("合并单元格相互重叠，请整理表格后重试。原稿未改动。");
           grid[rowIndex + down][column + across] = !down && !across ? text : "";
@@ -75,7 +95,7 @@ function htmlGrid(html: string): SpreadsheetPaste | null {
         column += span;
       }
     });
-    result = { ...gridMarkdown(grid, alignments), merged };
+    result = { ...gridMarkdown(grid, alignments, true), merged };
     return `\n\n${result.markdown}\n\n`;
   } });
   const converted = converter.turndown(html).trim();
@@ -84,8 +104,9 @@ function htmlGrid(html: string): SpreadsheetPaste | null {
 }
 
 export function spreadsheetFromClipboard(plain: string, html = ""): SpreadsheetPaste | null {
-  if (html.length > 2_000_000 || /<(?:pre|code)\b/i.test(html)) return null;
+  if (html.length > 2_000_000) return null;
   if (/<table\b/i.test(html)) return htmlGrid(html);
+  if (/<(?:pre|code)\b/i.test(html)) return null;
   if (/^ {0,3}(?:`{3,}|~{3,}|#{1,6}\s|---\s*$)/m.test(plain)) return null;
   const grid = readClipboardGrid(plain);
   return grid ? gridMarkdown(grid) : null;

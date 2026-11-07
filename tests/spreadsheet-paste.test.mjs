@@ -45,3 +45,16 @@ test("mixed rich content and unbounded spans never silently lose content", () =>
   assert.throws(() => readClipboardGrid("x\t".repeat(6000)), /5,000/);
   assert.deepEqual(tableInsertion("前文后文", 2, 2, "TABLE"), { text: "前文\n\nTABLE\n\n后文", start: 11, end: 11 });
 });
+
+test("Office cell emphasis, inline code, links and numeric spelling survive together", () => {
+  const html = '<table><tr><td><strong>牌号</strong></td><td>参数</td></tr><tr><td><span style="font-weight:700">304L</span><br><em>核对原文</em></td><td><code>A|B</code><br>3.00 / 0012<br><a href="https://example.com/evidence">原始证据</a></td></tr></table>';
+  const table = spreadsheetFromClipboard("", html);
+  assert.equal(table.markdown, '| **牌号** | 参数 |\n| --- | --- |\n| **304L**<br>*核对原文* | `A\\|B`<br>3.00 / 0012<br>[原始证据](https://example.com/evidence) |');
+});
+
+test("literal Office cell text stays literal and unsafe link destinations are omitted", () => {
+  const table = spreadsheetFromClipboard("", '<table><tr><td>原文</td><td>备注</td></tr><tr><td>**原样** | =SUM(A1)</td><td><a href="javascript:alert(1)">保留文字</a></td></tr></table>');
+  assert.ok(table.markdown.includes('\\*\\*原样\\*\\* \\| =SUM(A1)'));
+  assert.ok(table.markdown.includes('保留文字'));
+  assert.ok(!table.markdown.includes('javascript:'));
+});
