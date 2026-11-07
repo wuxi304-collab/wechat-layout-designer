@@ -78,3 +78,9 @@
 .wechat-html-checks { margin-top: 16px; padding-top: 12px; border-top: 1px solid #ccd8e1; }
 .wechat-html-checks ul { margin: 6px 0; padding-left: 20px; }
 .wechat-html-checks p { margin: 4px 0 0; color: #425d72; }
+.wechat-html-dialog.is-reading { width: min(720px, 100%); height: 100dvh; max-height: 100dvh; border-radius: 0; display: flex; flex-direction: column; overflow: hidden; }
+.wechat-html-dialog.is-reading :is(.wechat-html-instructions,.wechat-html-actions,.wechat-html-feedback,.wechat-html-checks) { display: none; }
+.wechat-html-dialog.is-reading .wechat-html-header span { display: none; }
+.wechat-html-dialog.is-reading .wechat-html-views { flex: none; margin-block: 10px; }
+.wechat-html-dialog.is-reading .wechat-html-frame { width: 100%; flex: 1; min-height: 0; }
+.wechat-html-dialog.is-reading iframe { height: 100%; min-height: 0; }

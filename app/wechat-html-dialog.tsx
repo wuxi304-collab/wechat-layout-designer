@@ -13,6 +13,7 @@ export function WechatHtmlDialog({ delivery, filename, onClose }: {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [view, setView] = useState<"preview" | "source">("preview");
   const [status, setStatus] = useState("");
+  const [reading, setReading] = useState(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -37,9 +38,9 @@ export function WechatHtmlDialog({ delivery, filename, onClose }: {
     }
   }
 
-  return <dialog ref={dialogRef} className="wechat-html-dialog" aria-labelledby="wechat-html-title" onClose={onClose}>
+  return <dialog ref={dialogRef} className={`wechat-html-dialog ${reading ? "is-reading" : ""}`} aria-labelledby="wechat-html-title" onClose={onClose}>
     <header className="wechat-html-header">
-      <div><p>交付 · HTML</p><h2 id="wechat-html-title">微信正文成品</h2><span>{delivery.title}</span></div>
+      <div><p>{reading ? "文章阅读预览" : "交付 · HTML"}</p><h2 id="wechat-html-title">{reading ? delivery.title : "微信正文成品"}</h2><span>{delivery.title}</span></div>
       <button type="button" className="wechat-html-close" onClick={() => dialogRef.current?.close()}>关闭</button>
     </header>
     <p className="wechat-html-instructions">标题、作者分别填写。点击「复制微信富文本」，到公众号后台正文区普通粘贴。预览与复制使用同一份正文。</p>
@@ -52,8 +53,9 @@ export function WechatHtmlDialog({ delivery, filename, onClose }: {
     </div>
     <div className="wechat-html-feedback" role="status">{status}</div>
     <div className="wechat-html-views" role="group" aria-label="HTML 展示方式">
-      <button type="button" aria-pressed={view === "preview"} onClick={() => setView("preview")}>手机正文预览</button>
-      <button type="button" aria-pressed={view === "source"} onClick={() => setView("source")}>HTML 源码</button>
+      <button type="button" aria-pressed={view === "preview"} onClick={() => { setView("preview"); setReading(true); dialogRef.current?.scrollTo({ top: 0 }); }}>手机正文预览</button>
+      {reading && <button type="button" onClick={() => setReading(false)}>返回交付操作</button>}
+      <button type="button" aria-pressed={view === "source"} onClick={() => { setView("source"); setReading(false); }}>HTML 源码</button>
     </div>
     {view === "preview" ? <div className="wechat-html-frame"><iframe title="交付正文预览" sandbox="" srcDoc={delivery.document} /></div>
       : <div className="wechat-html-source"><textarea aria-label="交付正文 HTML 源码" readOnly spellCheck={false} value={delivery.html} /><button type="button" onClick={copySource}>复制 HTML 源码</button></div>}
