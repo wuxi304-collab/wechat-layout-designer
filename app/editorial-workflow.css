@@ -148,7 +148,7 @@
 .article-page.manuscript-page {
   --manuscript-paragraph-gap: 1em;
   --manuscript-section-gap: 1.65em;
-  --manuscript-section-size: 1.22em;
+  --manuscript-section-size: 1.42em;
   --manuscript-title-top: 34px;
   --manuscript-title-bottom: 28px;
 }
@@ -210,15 +210,15 @@
 }
 .manuscript-page .manuscript-chapter[data-heading-style="rule"] { border-top: 2px solid var(--article-accent); border-bottom: 0; padding: .62em 0 0; }
 .manuscript-page .manuscript-chapter[data-heading-style="index"] { padding: .55em .7em; border-left: 3px solid var(--article-accent); border-bottom: 0; background: var(--article-soft); }
-.manuscript-page .manuscript-chapter[data-heading-style="index"] h2 { font-family: var(--font-ui, system-ui); font-size: 1.1em; }
+.manuscript-page .manuscript-chapter[data-heading-style="index"] h2 { font-family: var(--font-ui, system-ui); font-size: 1.36em; }
 .manuscript-page .manuscript-chapter[data-heading-style="centered"] { text-align: center; border: 0; }
 .manuscript-page .manuscript-chapter[data-heading-style="centered"] .manuscript-chapter-no { display: block; margin: 0 0 .35em; }
 .manuscript-page .manuscript-chapter[data-heading-style="plain"] { border: 0; padding: 0; }
-.manuscript-page .manuscript-chapter[data-heading-style="plain"] h2 { font-family: var(--font-ui, system-ui); font-size: 1.08em; }
+.manuscript-page .manuscript-chapter[data-heading-style="plain"] h2 { font-family: var(--font-ui, system-ui); font-size: 1.3em; }
 .manuscript-page .manuscript-subheading {
   margin: 1.18em 0 .52em;
   color: var(--article-ink);
-  font: 650 1.03em/1.5 var(--font-ui, system-ui);
+  font: 650 1.18em/1.5 var(--font-ui, system-ui);
   overflow-wrap: anywhere;
 }
 .editorial-studio .manuscript-page .article-body .manuscript-quote {
@@ -236,7 +236,7 @@
 .editorial-studio .manuscript-page .article-body .manuscript-quote p {
   margin: 0;
   color: var(--article-ink);
-  font: 450 var(--article-size)/var(--article-leading) var(--article-reading-font) !important;
+  font: 450 calc(var(--article-size) * .94)/var(--article-leading) var(--article-reading-font) !important;
   letter-spacing: normal;
   overflow-wrap: anywhere;
 }
