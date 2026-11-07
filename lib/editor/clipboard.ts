@@ -27,6 +27,8 @@ function copyWithSelection(text: string, host?: HTMLElement | null) {
   let copied = false;
   try {
     copied = document.execCommand("copy");
+  } catch {
+    copied = false;
   } finally {
     textarea.remove();
     selection?.removeAllRanges();
@@ -39,12 +41,18 @@ function copyWithSelection(text: string, host?: HTMLElement | null) {
 
 export async function writePlainClipboard(text: string, host?: HTMLElement | null) {
   // iOS WebView needs the selection copy to happen in the original tap stack.
-  if (copyWithSelection(text, host)) return "selection" as const;
+  const selected = copyWithSelection(text, host);
 
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return "clipboard" as const;
+    try {
+      await navigator.clipboard.writeText(text);
+      return "clipboard" as const;
+    } catch (reason) {
+      if (!selected) throw reason;
+    }
   }
+
+  if (selected) return "selection" as const;
 
   throw new Error("Clipboard API unavailable");
 }

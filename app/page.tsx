@@ -29,13 +29,17 @@ import {
 } from "@/lib/editor/cover-design";
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
 import { closesFence, findMarkdownTitle, readAtxHeading, readFence, readMarkdownListItem, readMarkdownTable, readSetextHeading } from "@/lib/editor/markdown-structure";
-import { DocumentImportError, importDocumentFile } from "@/lib/editor/document-import";
+import { importDocumentFile } from "@/lib/editor/document-import";
 import { writeRichClipboard } from "@/lib/editor/wechat-adapter";
 import { prepareWechatDelivery, type WechatDelivery } from "@/lib/editor/wechat-export";
 import { WechatHtmlDialog } from "./wechat-html-dialog";
 import { SourceWorkspace } from "./source-workspace";
 import { writePlainClipboard } from "@/lib/editor/clipboard";
 import { markdownFromRichClipboard } from "@/lib/editor/clipboard-import";
+import type { DraftSnapshot } from "@/lib/editor/draft-storage";
+import { useDraftArchive } from "./use-draft-archive";
+import { DraftHistoryDialog } from "./draft-history-dialog";
+import { spreadsheetFromClipboard } from "@/lib/editor/spreadsheet-paste";
 
 type IconName =
   | "brand" | "document" | "structure" | "style" | "assets" | "check"
@@ -338,7 +342,7 @@ function urlDomain(rawUrl: string) {
 }
 
 function unescapeMarkdown(value: string) {
-  return value.replace(/\\([\\`*_[\]{}()#+\-.!>|])/g, "$1");
+  return value.replace(/\\([\\`*_[\]{}()#+\-.!><|])/g, "$1");
 }
 
 function plainInline(text: string) {
@@ -572,7 +576,7 @@ export default function Home() {
   const [coverBackgroundAsset, setCoverBackgroundAsset] = useState<{ identity: string; file: File } | null>(null);
   const [coverLogoAsset, setCoverLogoAsset] = useState<{ company: string; file: File } | null>(null);
   const [coverLogoSourceEntry, setCoverLogoSourceEntry] = useState<{ company: string; value: string } | null>(null);
-  const [versions, setVersions] = useState<{ markdown: string; label: string }[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [wechatStatus, setWechatStatus] = useState<{ configured: boolean; connected: boolean; mode: string; appId: string | null; message: string }>({ configured: false, connected: false, mode: "未配置", appId: null, message: "尚未检查连接" });
   const [checkingWechat, setCheckingWechat] = useState(false);
   const studioRef = useRef<HTMLElement>(null);
@@ -580,9 +584,21 @@ export default function Home() {
   const inspectorPanelRef = useRef<HTMLElement>(null);
   const typesetRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const liveMarkdown = useRef(markdown);
+  useLayoutEffect(() => { liveMarkdown.current = markdown; }, [markdown]);
   const previousStage = useRef(stage);
   const previousInspector = useRef(inspector);
   const previousArticleStyle = useRef(`${markdownStyle}-${theme}-${layoutMode}-${fontProfile}`);
+  const draftSnapshot = useMemo(() => ({ markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking }), [markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking]);
+  function applyDraftSnapshot(value: DraftSnapshot) {
+    setMarkdown(value.markdown); setMarkdownStyle(value.markdownStyle); setTheme(value.theme);
+    setLayoutMode(value.layoutMode); setFontProfile(value.fontProfile); setFontSize(value.fontSize);
+    setLineHeight(value.lineHeight); setTitleScale(value.titleScale); setArticleTracking(value.articleTracking);
+    setSourceEncoding("UTF-8 · 本机草稿"); setImportWarnings([]); setSelected(null);
+  }
+  const archive = useDraftArchive(draftSnapshot, applyDraftSnapshot);
+  const { versions } = archive;
+  const saveLabel = { loading: "正在读取草稿", saving: "正在保存", saved: "本机已保存", error: "本机保存需检查" }[archive.status];
 
   const currentTheme = themes[theme];
   const currentMarkdownStyle = markdownStyles[markdownStyle];
@@ -665,34 +681,6 @@ export default function Home() {
   }, [article.author, article.blocks, article.title, article.unclosedFence, encodingIssues, hasArticleBody, importWarnings, markdown]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("wechat-layout-designer-draft-v2");
-    if (!saved) return;
-    try {
-      const payload = JSON.parse(saved);
-      if ([2, 3, 4, 5, 6, 7].includes(payload.schemaVersion) && typeof payload.markdown === "string") {
-        const timer = window.setTimeout(() => {
-          setMarkdown(normalizeMarkdownInput(payload.markdown));
-          setSourceEncoding("UTF-8 · 本机草稿");
-          if (payload.schemaVersion >= 3) {
-            if (typeof payload.markdownStyle === "string") {
-              if (payload.markdownStyle in markdownStyles) setMarkdownStyle(payload.markdownStyle as MarkdownStyleKey);
-              else if (["spring", "collage"].includes(payload.markdownStyle)) setMarkdownStyle("jiangnan");
-            }
-            if (payload.schemaVersion >= 6 && typeof payload.theme === "string" && payload.theme in themes) setTheme(payload.theme as ThemeKey);
-            if (typeof payload.layoutMode === "string" && ["calm", "balanced", "editorial"].includes(payload.layoutMode)) setLayoutMode(payload.layoutMode as LayoutMode);
-            if (typeof payload.fontSize === "number") setFontSize(payload.schemaVersion < 7 ? Math.min(20, payload.fontSize + 1) : payload.fontSize);
-            if (typeof payload.lineHeight === "number") setLineHeight(payload.lineHeight);
-            if (typeof payload.fontProfile === "string" && ["classic", "literary", "clear"].includes(payload.fontProfile)) setFontProfile(payload.fontProfile as FontProfile);
-            if (typeof payload.titleScale === "number") setTitleScale(payload.titleScale);
-            if (typeof payload.articleTracking === "number") setArticleTracking(payload.articleTracking);
-          }
-        }, 0);
-        return () => window.clearTimeout(timer);
-      }
-    } catch { /* 保留示例稿 */ }
-  }, []);
-
-  useEffect(() => {
     if (!window.matchMedia("(max-width: 840px)").matches) return;
     const timer = window.setTimeout(() => {
       setPreview("phone");
@@ -700,11 +688,6 @@ export default function Home() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => window.localStorage.setItem("wechat-layout-designer-draft-v2", JSON.stringify({ schemaVersion: 7, markdown, markdownStyle, theme, layoutMode, fontProfile, fontSize, lineHeight, titleScale, articleTracking, updatedAt: Date.now() })), 450);
-    return () => window.clearTimeout(timer);
-  }, [articleTracking, fontProfile, fontSize, layoutMode, lineHeight, markdown, markdownStyle, theme, titleScale]);
 
   useEffect(() => {
     if (inspector !== "规范") return;
@@ -920,7 +903,7 @@ export default function Home() {
   }
 
   function insertComponent(snippet: string, kind: string) {
-    setVersions((items) => [...items.slice(-4), { markdown, label: `插入${kind}前` }]);
+    archive.checkpoint(`插入${kind}前`);
     setMarkdown((value) => `${value.trimEnd()}${snippet}\n`);
     activateStage("编排");
     notify(`已插入${kind}组件，内容结构已更新`);
@@ -939,27 +922,44 @@ export default function Home() {
   }
 
   function saveVersion() {
-    setVersions((items) => [...items.slice(-4), { markdown, label: `恢复点 ${items.length + 1}` }]);
-    notify("已生成可恢复版本");
+    const id = archive.checkpoint("手动恢复点");
+    notify("已保留当前原稿与版式，可在恢复记录中查看");
+    return id;
   }
 
   function restoreVersion() {
     const last = versions.at(-1);
     if (!last) return notify("还没有可恢复版本");
-    setMarkdown(last.markdown);
-    setVersions((items) => items.slice(0, -1));
+    archive.restoreCheckpoint(last.id);
     notify(`已恢复${last.label}`);
+  }
+
+  async function copyMarkdown() {
+    if (!markdown.trim()) return notify("原稿为空，请先补充稿件");
+    try { await writePlainClipboard(markdown); notify("Markdown 原稿已复制"); }
+    catch { notify("复制失败，请下载 Markdown 或在原稿编辑器中手动复制"); }
+  }
+
+  function downloadMarkdown() {
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    link.href = url; link.download = `${safeDownloadName(article.title)}.md`;
+    document.body.append(link);
+    try { link.click(); notify("已发起 Markdown 下载"); }
+    finally { link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
   }
 
   async function importFile(file?: File) {
     if (!file) return;
+    const original = liveMarkdown.current;
     setImportingFile(true);
     setImportProgress("准备解析");
     try {
       if (/\.(md|markdown|txt)$/i.test(file.name)) {
         const decoded = decodeImportedBuffer(await file.arrayBuffer());
         const nextMarkdown = normalizeMarkdownInput(decoded.text);
-        setVersions((items) => [...items.slice(-4), { markdown, label: `导入 ${file.name} 前` }]);
+        if (liveMarkdown.current !== original) throw new Error("解析期间原稿已改动，请重新导入；当前改动已保留");
+        archive.checkpoint(`导入 ${file.name} 前`);
         setMarkdown(nextMarkdown);
         setSourceEncoding(`${decoded.encoding} · 文件`);
         setImportWarnings([]);
@@ -967,7 +967,8 @@ export default function Home() {
         notify(issues.length ? `已按 ${decoded.encoding} 导入，仍有 ${issues.length} 项编码风险` : `已按 ${decoded.encoding} 导入，字符检查通过`);
       } else {
         const imported = await importDocumentFile(file, ({ currentPage, totalPages }) => setImportProgress(`PDF ${currentPage}/${totalPages} 页`));
-        setVersions((items) => [...items.slice(-4), { markdown, label: `导入 ${file.name} 前` }]);
+        if (liveMarkdown.current !== original) throw new Error("解析期间原稿已改动，请重新导入；当前改动已保留");
+        archive.checkpoint(`导入 ${file.name} 前`);
         setMarkdown(normalizeMarkdownInput(imported.markdown));
         setSourceEncoding(imported.sourceLabel);
         setImportWarnings(imported.warnings);
@@ -976,7 +977,7 @@ export default function Home() {
       activateStage("稿件");
       setSourceOpen(true);
     } catch (error) {
-      notify(error instanceof DocumentImportError ? error.message : "文件解析失败，请检查格式后重试");
+      notify(error instanceof Error ? error.message : "文件解析失败，请检查格式后重试");
     } finally {
       setImportingFile(false);
       setImportProgress("");
@@ -985,6 +986,7 @@ export default function Home() {
   }
 
   async function pasteMarkdown() {
+    const original = liveMarkdown.current;
     try {
       let text = "";
       let richHtml = "";
@@ -1000,24 +1002,26 @@ export default function Home() {
       }
       if (!text) text = await navigator.clipboard.readText();
       if (!text.trim()) return notify("剪贴板里没有可粘贴的文字");
-      const richMarkdown = markdownFromRichClipboard(richHtml, text);
-      const nextMarkdown = normalizeMarkdownInput(richMarkdown ?? text);
+      const table = spreadsheetFromClipboard(text, richHtml);
+      const richMarkdown = table ? null : markdownFromRichClipboard(richHtml, text);
+      const nextMarkdown = normalizeMarkdownInput(table?.markdown ?? richMarkdown ?? text);
+      if (liveMarkdown.current !== original) return notify("读取剪贴板期间原稿已改动，请重新粘贴；当前改动已保留");
       const nextArticle = parseArticle(nextMarkdown);
-      setVersions((items) => markdown.trim() ? [...items.slice(-4), { markdown, label: `粘贴前恢复点 ${items.length + 1}` }] : items);
+      if (markdown.trim()) archive.checkpoint("粘贴前的稿件");
       setMarkdown(nextMarkdown);
-      setSourceEncoding(richMarkdown ? "富文本 · 加粗已保留" : "Unicode · 剪贴板文字");
-      setImportWarnings(!richMarkdown && !/\*\*[^*\n]+\*\*/.test(text) ? ["本次剪贴板仅含纯文字；若原文有加粗，请复制 Markdown 原稿"] : []);
+      setSourceEncoding(table ? `表格 · ${table.rows}行×${table.columns}列` : richMarkdown ? "富文本 · 加粗已保留" : "Unicode · 剪贴板文字");
+      setImportWarnings(table ? ["表格首行作为表头，请核对列名和数据" + (table.merged ? "；合并单元格已展开，空位保留" : "")] : !richMarkdown && !/\*\*[^*\n]+\*\*/.test(text) ? ["本次剪贴板仅含纯文字；若原文有加粗，请复制 Markdown 原稿"] : []);
       setSourceOpen(false);
       activateStage("编排");
       notify(nextArticle.title === "未命名文章" ? "原稿已粘贴并编排，请补充文章标题" : richMarkdown ? `已粘贴并编排：${nextArticle.title} · 加粗已保留` : `已粘贴并编排：${nextArticle.title}${/\*\*[^*\n]+\*\*/.test(text) ? "" : " · 剪贴板未提供加粗格式"}`);
-    } catch {
-      notify("浏览器拦截了剪贴板；请在系统设置中允许此浏览器读取粘贴内容");
+    } catch (reason) {
+      notify(reason instanceof Error && !["NotAllowedError", "SecurityError"].includes(reason.name) ? reason.message : "浏览器拦截了剪贴板；请在系统设置中允许此浏览器读取粘贴内容");
     }
   }
 
   function clearMarkdown() {
     if (!markdown.trim()) return notify("原稿已经是空的");
-    setVersions((items) => [...items.slice(-4), { markdown, label: `清空前恢复点 ${items.length + 1}` }]);
+    archive.checkpoint("清空前的稿件");
     setMarkdown("");
     setSourceEncoding("UTF-8 · 空白稿");
     notify("原稿已清空，并保留一个恢复点");
@@ -1229,10 +1233,10 @@ export default function Home() {
     <main ref={studioRef} className={`studio-shell editorial-studio mobile-pane-${mobilePane} ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong><span className="brand-title-desktop">公众号排版设计师</span><span className="brand-title-mobile">钢铁私塾排版</span></strong><small>江南编辑书房 · 文章有骨</small></div></div>
-        <div className="document-identity"><span className="save-indicator"><i />本机已保存</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="编辑当前原稿" onClick={() => setSourceOpen(true)}><Icon name="chevron" size={15}/></button></div>
+        <div className="document-identity"><span className="save-indicator" data-save-state={archive.status} role="status"><i />{saveLabel}</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="编辑当前原稿" onClick={() => setSourceOpen(true)}><Icon name="chevron" size={15}/></button></div>
         <div className="top-actions">
           <button className="icon-button" aria-label="恢复上一版本" onClick={restoreVersion}><Icon name="undo"/></button>
-          <button className="icon-button" aria-label="生成恢复版本" onClick={saveVersion}><Icon name="history"/></button>
+          <button className="icon-button" aria-label="查看恢复记录" onClick={() => setHistoryOpen(true)}><Icon name="history"/></button>
           <span className="top-divider"/>
           <button type="button" className="mobile-surface-toggle" onClick={toggleMobileSurface}><Icon name={mobilePane === "canvas" ? "style" : stage === "封面" ? "assets" : "document"} size={15}/>{mobilePane === "canvas" ? "返回步骤" : stage === "封面" ? "看封面" : "看正文"}</button>
           <button className="quiet-action" onClick={() => activateStage("编排")}><Icon name="structure" size={15}/>阅读编排</button>
@@ -1382,6 +1386,8 @@ export default function Home() {
             <button type="button" onClick={() => fileRef.current?.click()} disabled={importingFile}><Icon name="plus" size={17}/>{importingFile ? importProgress || "正在导入" : "导入文件"}</button>
           </div>
           <p className="editorial-quiet-note">支持 Markdown、TXT、Word 和 PDF，本机解析。</p>
+          <div className="draft-archive-summary"><span data-save-state={archive.status} role="status">{saveLabel}</span><button type="button" onClick={() => setHistoryOpen(true)}>恢复记录 · {versions.length}</button></div>
+          {archive.error && <div className="draft-save-error" role="alert"><p>{archive.error}</p><div className="draft-error-actions"><button type="button" onClick={downloadMarkdown}>下载原稿备份</button><button type="button" onClick={archive.retry}>重试保存</button></div></div>}
           <section className="editorial-manuscript-card" aria-label="稿件识别结果">
             <span>{article.title === "未命名文章" ? "标题待确认" : "已识别标题"}</span>
             <strong>{article.title}</strong>
@@ -1424,6 +1430,7 @@ export default function Home() {
           </div>
           <button type="button" className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>03 复制微信正文</button>
           <button type="button" className="wechat-html-launch" onClick={openWechatHtml}><Icon name="document" size={17}/>微信 HTML 交付</button>
+          <section className="draft-markdown-delivery" aria-label="Markdown 原稿交付"><strong>Markdown 原稿</strong><p>保留原文、强调和结构，便于继续修改与存档。</p><div><button type="button" disabled={!markdown.trim()} onClick={copyMarkdown}>复制 Markdown</button><button type="button" onClick={downloadMarkdown}>下载 .md</button></div></section>
           <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>发布前复核</span><small>{structure.chapter} 个章节 · {article.blocks.length} 个正文块</small></div></div>{diagnostics.length > 0 && <ul className="editorial-warnings">{[...new Set(diagnostics)].map((item) => <li key={item}><Icon name="warning" size={15}/>{item}</li>)}</ul>}</section>
         </div>}
 
@@ -1486,8 +1493,9 @@ export default function Home() {
         {stageItems.map((item) => <button key={item.title} type="button" className={stage === item.title ? "active" : ""} aria-current={stage === item.title ? "step" : undefined} onClick={() => activateStage(item.title)}><Icon name={item.icon} size={18}/><span>{item.title}</span></button>)}
       </nav>
 
+      {historyOpen && <DraftHistoryDialog versions={versions} saveStatus={archive.error || saveLabel} onSave={saveVersion} onRestore={(id) => { archive.restoreCheckpoint(id); notify("已恢复原稿与版式，恢复前的稿件已保留"); }} onClose={() => setHistoryOpen(false)} />}
       {htmlDelivery && <WechatHtmlDialog delivery={htmlDelivery} filename={`${safeDownloadName(htmlDelivery.title)}-微信正文.html`} onClose={() => setHtmlDelivery(null)} />}
-      {sourceOpen && <div className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><SourceWorkspace value={markdown} onChange={(value) => { setMarkdown(value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }}/><footer><span className="source-health"><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>}
+      <div hidden={!sourceOpen} className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><SourceWorkspace value={markdown} active={sourceOpen} onCheckpoint={() => archive.checkpoint("替换或表格粘贴前的稿件")} onChange={(value) => { archive.beforeEdit(); setMarkdown(value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }}/><footer><span className="source-health"><small data-save-state={archive.status} role="status">{saveLabel}{archive.error ? ` · ${archive.error}` : ""}</small><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );
