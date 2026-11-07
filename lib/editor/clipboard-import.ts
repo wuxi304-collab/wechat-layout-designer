@@ -10,7 +10,7 @@ function createConverter() {
   });
   turndown.use(gfm);
   turndown.addRule("removeClipboardChrome", {
-    filter: ["script", "style", "button", "nav", "iframe", "noscript", "svg"],
+    filter: (node) => ["script", "style", "button", "nav", "iframe", "noscript", "svg"].includes(node.nodeName.toLowerCase()),
     replacement: () => "",
   });
   turndown.addRule("styledBold", {

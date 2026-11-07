@@ -205,14 +205,19 @@ function copyRichWithSelection(html: string, plainText: string, host?: HTMLEleme
 export async function writeRichClipboard(html: string, plainText: string, host?: HTMLElement | null) {
   // iOS / 微信内置 WebView 常没有 ClipboardItem，但仍支持在点击手势中复制富文本选区。
   // 必须先同步尝试，不能 await 之后再补救，否则浏览器会撤销复制权限。
-  if (copyRichWithSelection(html, plainText, host)) return "selection" as const;
+  const selected = copyRichWithSelection(html, plainText, host);
 
   if (window.ClipboardItem && navigator.clipboard?.write) {
-    await navigator.clipboard.write([new ClipboardItem({
-      "text/html": new Blob([html], { type: "text/html" }),
-      "text/plain": new Blob([plainText], { type: "text/plain" }),
-    })]);
-    return "clipboard" as const;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([plainText], { type: "text/plain" }),
+      })]);
+      return "clipboard" as const;
+    } catch (reason) {
+      if (!selected) throw reason;
+    }
   }
+  if (selected) return "selection" as const;
   throw new Error("Rich clipboard unavailable");
 }

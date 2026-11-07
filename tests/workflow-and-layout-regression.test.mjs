@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import { readDraftArchive } from "../lib/editor/draft-storage.ts";
 
 const designSystem = fs.readFileSync(new URL("../lib/editor/design-system.ts", import.meta.url), "utf8");
 const page = fs.readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
@@ -34,5 +35,10 @@ test("结构组件按文章任务收敛，并根据正文语义给出推荐", ()
 });
 
 test("旧版式草稿平滑迁移，不会造成空白或崩溃", () => {
-  assert.match(page, /\["spring", "collage"\]\.includes\(payload\.markdownStyle\)\) setMarkdownStyle\("jiangnan"\)/);
+  const defaults = { markdown: "", markdownStyle: "jiangnan", theme: "national", layoutMode: "calm", fontProfile: "classic", fontSize: 18, lineHeight: 1.94, titleScale: 1, articleTracking: .008 };
+  for (const markdownStyle of ["spring", "collage"]) {
+    const migrated = readDraftArchive(JSON.stringify({ schemaVersion: 3, markdown: "# 旧稿\n\n**316L**", markdownStyle }), defaults);
+    assert.equal(migrated.markdownStyle, "jiangnan");
+    assert.equal(migrated.markdown, "# 旧稿\n\n**316L**");
+  }
 });

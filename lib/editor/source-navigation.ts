@@ -3,6 +3,10 @@ import { closesFence, readAtxHeading, readFence, readSetextHeading } from "./mar
 export type SourceRange = { start: number; end: number };
 export type SourceHeading = SourceRange & { line: number; level: number; text: string };
 
+export function isCompositionKey(event: { isComposing?: boolean; keyCode?: number; key?: string }) {
+  return Boolean(event.isComposing || event.keyCode === 229 || event.key === "Process");
+}
+
 export function readSourceHeadings(source: string): SourceHeading[] {
   const lines = Array.from(source.matchAll(/([^\r\n]*)(?:\r\n|\r|\n|$)/g));
   const headings: SourceHeading[] = [];
@@ -32,13 +36,26 @@ export function readSourceHeadings(source: string): SourceHeading[] {
 }
 
 /** Match literal text; match indices always refer to the unmodified textarea value. */
-export function findSourceMatches(source: string, query: string): SourceRange[] {
+export function findSourceMatches(source: string, query: string, caseSensitive = false, wholeWord = false): SourceRange[] {
   if (!query.trim()) return [];
   const literal = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return Array.from(source.matchAll(new RegExp(literal, "giu")), (match) => ({
+  return Array.from(source.matchAll(new RegExp(literal, caseSensitive ? "gu" : "giu")), (match) => ({
     start: match.index,
     end: match.index + match[0].length,
-  }));
+  })).filter(({ start, end }) => !wholeWord || !/[A-Za-z0-9_]/.test(source[start - 1] ?? "") && !/[A-Za-z0-9_]/.test(source[end] ?? ""));
+}
+
+/** Offsets come from findSourceMatches; replacement is literal, including $ and backslashes. */
+export function replaceSourceMatches(source: string, matches: SourceRange[], replacement: string, index?: number) {
+  const ranges = index === undefined ? matches : matches.slice(index, index + 1);
+  if (!ranges.length) return null;
+  let text = "", offset = 0;
+  for (const range of ranges) {
+    text += source.slice(offset, range.start) + replacement;
+    offset = range.end;
+  }
+  text += source.slice(offset);
+  return { text, start: ranges[0].start, end: ranges[0].start + replacement.length, count: ranges.length };
 }
 
 export function toggleSourceEmphasis(source: string, range: SourceRange, marker: "*" | "**") {

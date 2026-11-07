@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findSourceMatches, readSourceHeadings, toggleSourceEmphasis } from "../lib/editor/source-navigation.ts";
+import { findSourceMatches, isCompositionKey, readSourceHeadings, replaceSourceMatches, toggleSourceEmphasis } from "../lib/editor/source-navigation.ts";
+
+test("IME candidate Enter and Process keys do not trigger source commands", () => {
+  assert.equal(isCompositionKey({ key: "Enter", keyCode: 229 }), true);
+  assert.equal(isCompositionKey({ key: "Enter", isComposing: true }), true);
+  assert.equal(isCompositionKey({ key: "Process" }), true);
+  assert.equal(isCompositionKey({ key: "Enter", keyCode: 13 }), false);
+});
+
+test("literal replacement preserves technical punctuation, CRLF, dollar signs and case choice", () => {
+  const raw = "# C++\r\nA+B (A.B)；a+b (a.b)\r\n**316L**";
+  const matches = findSourceMatches(raw, "A+B (A.B)");
+  assert.equal(replaceSourceMatches(raw, matches, "$&\\316L", 1).text, "# C++\r\nA+B (A.B)；$&\\316L\r\n**316L**");
+  assert.equal(replaceSourceMatches(raw, matches, "").text, "# C++\r\n；\r\n**316L**");
+  assert.equal(findSourceMatches(raw, "A+B (A.B)", true).length, 1);
+  assert.equal(replaceSourceMatches(raw, [], "x"), null);
+  const unicode = "K / k";
+  assert.equal(replaceSourceMatches(unicode, findSourceMatches(unicode, "k"), "中").text, "中 / 中");
+  const grades = "304、304L、S30408，中文304材质，**304**。";
+  assert.deepEqual(findSourceMatches(grades, "304", false, true).map(({start}) => start), [0, 18, 26]);
+});
 
 test("source outline skips front matter and fenced examples while keeping original CRLF offsets", () => {
   const raw = ["---", "title: 现场记录", "# YAML 注释", "---", "牌号说明", "====", "", "````md", "# 演示", "```", "## 仍在代码内", "````", "## 关于 C# ###"].join("\r\n");
