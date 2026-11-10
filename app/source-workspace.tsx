@@ -28,7 +28,7 @@ function revealRange(editor: HTMLTextAreaElement, range: SourceRange) {
   }
 }
 
-export function SourceWorkspace({ value, active = true, onChange, onCheckpoint }: { value: string; active?: boolean; onChange: (next: string) => void; onCheckpoint?: () => void }) {
+export function SourceWorkspace({ value, active = true, focusRange = null, onChange, onCheckpoint }: { value: string; active?: boolean; focusRange?: SourceRange | null; onChange: (next: string) => void; onCheckpoint?: () => void }) {
   const [panel, setPanel] = useState<"search" | "outline" | null>(null);
   const [query, setQuery] = useState("");
   const [replacement, setReplacement] = useState("");
@@ -56,6 +56,16 @@ export function SourceWorkspace({ value, active = true, onChange, onCheckpoint }
     if (active && panel === "search") search.current?.focus();
     else if (active) editor.current?.focus({ preventScroll: true });
   }, [panel, active]);
+
+  // Preview-to-source navigation runs after the drawer becomes visible.
+  // Do not reset editor history or write into the article when focusing a block.
+  useLayoutEffect(() => {
+    if (!active || !focusRange || !editor.current) return;
+    revealRange(editor.current, {
+      start: Math.min(value.length, Math.max(0, focusRange.start)),
+      end: Math.min(value.length, Math.max(0, focusRange.end)),
+    });
+  }, [active, focusRange, value]);
 
   useLayoutEffect(() => {
     if (previous.current !== value) {
