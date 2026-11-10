@@ -49,5 +49,8 @@ test("phone final preview can select a block and open its source span", async ()
   assert.match(page, /<SourceWorkspace value=\{markdown\} active=\{sourceOpen\} focusRange=\{sourceFocusRange\}/);
   assert.match(workspace, /useLayoutEffect\(\(\) => \{[\s\S]*?if \(!active \|\| !focusRange \|\| !editor\.current\) return;/);
   assert.match(workspace, /revealRange\(editor\.current,/);
+  assert.match(workspace, /\}, \[active, focusRange\]\);/);
+  assert.doesNotMatch(workspace, /\}, \[active, focusRange, value\]\);/);
+  assert.match(page, /if \(markdown !== safeMarkdown\) \{/);
   assert.match(page, /编辑本段/);
 });
