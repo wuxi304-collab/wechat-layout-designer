@@ -1,0 +1,32 @@
+name: VNext Pull Request Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "lib/editor/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/vnext-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build server renderer and run all regressions
+        run: npm test
+      - name: Build GitHub Pages version
+        run: npm run build:pages

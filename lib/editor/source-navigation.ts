@@ -91,3 +91,19 @@ export function toggleSourceEmphasis(source: string, range: SourceRange, marker:
   if (selection.startsWith("*") || selection.endsWith("*")) return null;
   return { text: source.slice(0, start) + marker + selection + marker + source.slice(end), start: start + size, end: end + size };
 }
+
+
+/**
+ * Build UTF-16 textarea offsets for a normalized Markdown body. bodyOffset
+ * accounts for front matter removed by the article parser. Work from the
+ * unmodified source lines: title detection may blank lines in a working copy.
+ */
+export function readSourceLineRanges(body: string, bodyOffset = 0): SourceRange[] {
+  if (!Number.isInteger(bodyOffset) || bodyOffset < 0) throw new RangeError("Invalid Markdown body offset");
+  let cursor = bodyOffset;
+  return body.split("\n").map((line) => {
+    const range = { start: cursor, end: cursor + line.length };
+    cursor += line.length + 1;
+    return range;
+  });
+}

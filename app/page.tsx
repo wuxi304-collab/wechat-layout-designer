@@ -30,6 +30,7 @@ import {
 import { detectPlainTextTitle } from "@/lib/editor/title-detection";
 import { closesFence, findMarkdownTitle, readAtxHeading, readFence, readMarkdownListItem, readMarkdownTable, readSetextHeading } from "@/lib/editor/markdown-structure";
 import { importDocumentFile } from "@/lib/editor/document-import";
+import { readSourceLineRanges, type SourceRange } from "@/lib/editor/source-navigation";
 import { writeRichClipboard } from "@/lib/editor/wechat-adapter";
 import { prepareWechatDelivery, type WechatDelivery } from "@/lib/editor/wechat-export";
 import { WechatHtmlDialog } from "./wechat-html-dialog";
@@ -199,7 +200,7 @@ type StageKey = "稿件" | "编排" | "版式" | "封面" | "交付";
 type MobilePane = "canvas" | "inspector";
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
 type BlockType = "title" | "paragraph" | "heading" | "subheading" | "quote" | "list" | "code" | "divider" | "table" | "alert" | "image";
-type ArticleBlock =
+type ArticleBlock = (
   | { type: "paragraph"; text: string }
   | { type: "heading"; text: string }
   | { type: "subheading"; text: string }
@@ -209,7 +210,8 @@ type ArticleBlock =
   | { type: "alert"; kind: AlertKind; text: string }
   | { type: "image"; alt: string; src: string; caption: string }
   | { type: "code"; language: string; code: string }
-  | { type: "divider" };
+  | { type: "divider" }
+) & { sourceRange?: SourceRange };
 type ArticleReference = { id: string; title: string; url: string; domain: string };
 type ArticleFootnote = { id: string; text: string };
 
@@ -424,6 +426,8 @@ function parseArticle(markdown: string) {
     source = source.slice(frontMatter[0].length);
   }
   const lines = source.split("\n");
+  const sourceLines = readSourceLineRanges(source, normalizeMarkdownInput(markdown).length - source.length);
+  const sourceSpan = (first: number, last: number): SourceRange => ({ start: sourceLines[first].start, end: sourceLines[last].end });
   const explicitTitle = findMarkdownTitle(lines);
   const inferredTitle = detectPlainTextTitle(source, frontMatterTitle || explicitTitle?.text);
   if (inferredTitle) [...inferredTitle.lineIndices, ...inferredTitle.preambleLineIndices].forEach((index) => { lines[index] = ""; });
@@ -436,18 +440,26 @@ function parseArticle(markdown: string) {
   const references: ArticleReference[] = [];
   const footnotes: ArticleFootnote[] = [];
   let paragraph: string[] = [];
+  let paragraphBegin = -1, paragraphLast = -1;
+  let quoteBegin = -1, quoteLast = -1;
+  let listBegin = -1, listLast = -1;
   let list: Extract<ArticleBlock, { type: "list" }> | null = null;
   let quote: string[] = [];
   let quoteKind: AlertKind | null = null;
-  let codeFence: (NonNullable<ReturnType<typeof readFence>> & { lines: string[] }) | null = null;
+  let codeFence: (NonNullable<ReturnType<typeof readFence>> & { lines: string[]; startLine: number }) | null = null;
   const flushParagraph = () => {
-    if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph) });
-    paragraph = [];
+    if (paragraph.length) blocks.push({ type: "paragraph", text: joinParagraph(paragraph), sourceRange: sourceSpan(paragraphBegin, paragraphLast) });
+    paragraph = []; paragraphBegin = -1; paragraphLast = -1;
   };
-  const flushList = () => { if (list) blocks.push(list); list = null; };
+  const flushList = () => {
+    if (list) blocks.push({ ...list, sourceRange: sourceSpan(listBegin, listLast) });
+    list = null; listBegin = -1; listLast = -1;
+  };
   const flushQuote = () => {
-    if (quote.length) blocks.push(quoteKind ? { type: "alert", kind: quoteKind, text: joinParagraph(quote) } : { type: "quote", text: joinParagraph(quote) });
-    quote = [];
+    if (quote.length) blocks.push(quoteKind
+      ? { type: "alert", kind: quoteKind, text: joinParagraph(quote), sourceRange: sourceSpan(quoteBegin, quoteLast) }
+      : { type: "quote", text: joinParagraph(quote), sourceRange: sourceSpan(quoteBegin, quoteLast) });
+    quote = []; quoteBegin = -1; quoteLast = -1;
     quoteKind = null;
   };
   const flush = () => { flushParagraph(); flushList(); flushQuote(); };
@@ -457,7 +469,7 @@ function parseArticle(markdown: string) {
     const line = rawLine.trim();
     if (codeFence) {
       if (closesFence(rawLine, codeFence)) {
-        blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
+        blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n"), sourceRange: sourceSpan(codeFence.startLine, lineIndex) });
         codeFence = null;
       } else codeFence.lines.push(rawLine);
       continue;
@@ -465,7 +477,7 @@ function parseArticle(markdown: string) {
     const fence = readFence(rawLine);
     if (fence) {
       flush();
-      codeFence = { ...fence, lines: [] };
+      codeFence = { ...fence, lines: [], startLine: lineIndex };
       continue;
     }
     if (!line) { flush(); continue; }
@@ -473,7 +485,7 @@ function parseArticle(markdown: string) {
     const table = readMarkdownTable(lines, lineIndex);
     if (table) {
       flush();
-      blocks.push({ type: "table", headers: table.headers, alignments: table.alignments, rows: table.rows });
+      blocks.push({ type: "table", headers: table.headers, alignments: table.alignments, rows: table.rows, sourceRange: sourceSpan(lineIndex, table.consumedUntil) });
       lineIndex = table.consumedUntil;
       continue;
     }
@@ -499,7 +511,7 @@ function parseArticle(markdown: string) {
     const image = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^\s)]+)(?:\s+["']([^"']*)["'])?\)$/);
     if (image) {
       flush();
-      blocks.push({ type: "image", alt: plainInline(image[1]) || "文章图片", src: cleanUrl(image[2]), caption: plainInline(image[3] || image[1]) });
+      blocks.push({ type: "image", alt: plainInline(image[1]) || "文章图片", src: cleanUrl(image[2]), caption: plainInline(image[3] || image[1]), sourceRange: sourceSpan(lineIndex, lineIndex) });
       continue;
     }
     const atx = readAtxHeading(rawLine);
@@ -507,33 +519,40 @@ function parseArticle(markdown: string) {
     const heading = atx ?? setext;
     if (heading) {
       flush();
-      blocks.push({ type: heading.level <= 2 ? "heading" : "subheading", text: heading.text });
+      blocks.push({ type: heading.level <= 2 ? "heading" : "subheading", text: heading.text, sourceRange: sourceSpan(lineIndex, lineIndex + (setext ? 1 : 0)) });
       if (setext) lineIndex++;
       continue;
     }
-    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flush(); blocks.push({ type: "divider" }); continue; }
+    if (/^(?:-{3,}|_{3,}|\*{3,})$/.test(line)) { flush(); blocks.push({ type: "divider", sourceRange: sourceSpan(lineIndex, lineIndex) }); continue; }
     const quoteLine = line.match(/^>\s?(.*)$/);
     if (quoteLine) {
       flushParagraph(); flushList();
       const alert = quoteLine[1].match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i);
-      if (alert) { flushQuote(); quoteKind = alert[1].toLowerCase() as AlertKind; }
-      else if (quoteLine[1]) quote.push(quoteLine[1]);
-      else if (quote.length && quote.at(-1) !== "<br><br>") quote.push("<br><br>");
+      if (alert) { flushQuote(); quoteKind = alert[1].toLowerCase() as AlertKind; quoteBegin = lineIndex; quoteLast = lineIndex; }
+      else {
+        if (quoteBegin < 0) quoteBegin = lineIndex;
+        quoteLast = lineIndex;
+        if (quoteLine[1]) quote.push(quoteLine[1]);
+        else if (quote.length && quote.at(-1) !== "<br><br>") quote.push("<br><br>");
+      }
       continue;
     }
     const listLine = readMarkdownListItem(rawLine);
     if (listLine) {
       flushParagraph(); flushQuote();
       if (list && list.ordered !== listLine.ordered) flushList();
-      if (!list) list = { type: "list", ordered: listLine.ordered, start: listLine.start, items: [] };
+      if (!list) { list = { type: "list", ordered: listLine.ordered, start: listLine.start, items: [] }; listBegin = lineIndex; }
+      listLast = lineIndex;
       list.items.push(listLine.item);
       continue;
     }
     flushQuote(); flushList();
     const explicitBreak = rawLine.endsWith("  ") || /(?<!\\)\\$/.test(rawLine);
+    if (paragraphBegin < 0) paragraphBegin = lineIndex;
+    paragraphLast = lineIndex;
     paragraph.push(explicitBreak ? line.replace(/(?<!\\)\\$/, "") + "<br>" : line);
   }
-  if (codeFence) blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n") });
+  if (codeFence) blocks.push({ type: "code", language: codeFence.language, code: codeFence.lines.join("\n"), sourceRange: sourceSpan(codeFence.startLine, lines.length - 1) });
   flush();
   return { title, author, subtitle, blocks, references, footnotes, unclosedFence: Boolean(codeFence) };
 }
@@ -557,6 +576,7 @@ export default function Home() {
   const [articleTracking, setArticleTracking] = useState(0.008);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("calm");
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceFocusRange, setSourceFocusRange] = useState<SourceRange | null>(null);
   const [htmlDelivery, setHtmlDelivery] = useState<WechatDelivery | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
@@ -859,6 +879,26 @@ export default function Home() {
     setFocusMode(false);
     setTypewriterMode(false);
     setMobilePane("canvas");
+  }
+
+  function editSelectedBlock() {
+    // The AST uses normalized Markdown offsets. Never select an unrelated
+    // source span if Unicode/line-ending normalization changed the raw text.
+    if (markdown !== safeMarkdown) {
+      setSourceFocusRange(null);
+      setSourceOpen(true);
+      notify("原稿含未规范化字符，已打开编辑器；请清理字符后再精确定位");
+      return;
+    }
+    const range = selected && selected.index >= 0 ? article.blocks[selected.index]?.sourceRange : null;
+    if (!range) {
+      setSourceFocusRange(null);
+      setSourceOpen(true);
+      notify("已打开原稿；这一处暂无法精确定位");
+      return;
+    }
+    setSourceFocusRange({ ...range });
+    setSourceOpen(true);
   }
 
   function jumpToBlock(index: number, type: "title" | "heading" | "subheading") {
@@ -1220,9 +1260,21 @@ export default function Home() {
   const selectProps = (index: number, type: BlockType) => ({
     className: `selectable-block ${workspaceView === "final" ? "is-readonly" : ""} ${selected?.index === index && selected.type === type ? "is-selected" : ""} ${syncedTypes.includes(type) ? "synced-style" : ""}`,
     "data-block-index": index,
-    role: workspaceView === "proof" ? "button" : undefined, tabIndex: workspaceView === "proof" ? 0 : -1,
-    onClick: (event: React.MouseEvent) => { event.stopPropagation(); if (workspaceView === "proof") setSelected({ index, type }); },
-    onKeyDown: (event: React.KeyboardEvent) => { if (workspaceView === "proof" && (event.key === "Enter" || event.key === " ")) setSelected({ index, type }); },
+    role: "button", tabIndex: 0,
+    "aria-label": `选择${blockLabel(type)}，可进一步编辑原稿`,
+    onClick: (event: React.MouseEvent) => {
+      event.stopPropagation();
+      if (workspaceView !== "proof") setWorkspaceView("proof");
+      setSelected({ index, type });
+    },
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (workspaceView !== "proof") setWorkspaceView("proof");
+        setSelected({ index, type });
+      }
+    },
   });
 
   function renderOutline() {
@@ -1303,7 +1355,7 @@ export default function Home() {
           <div className="ink-scent" aria-hidden="true"><span>墨</span><i/><small>松烟入砚</small></div>
           <div className="canvas-atmosphere" aria-hidden="true"><span>烟水入纸</span><i/><small>字句成章</small></div>
           <div className="ruler top-ruler"><i>0</i><i>100</i><i>200</i><i>300</i></div><div className="ruler side-ruler"><i>0</i><i>200</i><i>400</i><i>600</i></div>
-          {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
+          {selected && <div className="block-toolbar" data-editor-ui onClick={(event) => event.stopPropagation()}><span>{blockLabel(selected.type)}</span><button type="button" onClick={editSelectedBlock}><Icon name="document" size={14}/>编辑本段</button><button onClick={captureStyle}><Icon name="brush" size={14}/>采集规则</button><button className={capturedType ? "ready" : ""} onClick={applyCapturedStyle}>同步同类</button><button aria-label="取消选择" onClick={() => setSelected(null)}><Icon name="close" size={14}/></button></div>}
 
           {stage === "封面" ? <section className="cover-workbench" onClick={(event) => event.stopPropagation()} style={{ "--cover-paper": selectedCoverStyle.palette[0], "--cover-ink": selectedCoverStyle.palette[1], "--cover-accent": selectedCoverStyle.palette[2] } as React.CSSProperties}>
             <header className="cover-workbench-head"><div><span>封面 · 版式草图</span><h2>{selectedCoverLabel.name}</h2><p>{selectedCoverStyle.direction}</p></div><span className="cover-proof-label">2.35:1</span></header>
@@ -1499,7 +1551,7 @@ export default function Home() {
 
       {historyOpen && <DraftHistoryDialog versions={versions} saveStatus={archive.error || saveLabel} onSave={saveVersion} onRestore={(id) => { archive.restoreCheckpoint(id); notify("已恢复原稿与版式，恢复前的稿件已保留"); }} onClose={() => setHistoryOpen(false)} />}
       {htmlDelivery && <WechatHtmlDialog delivery={htmlDelivery} filename={`${safeDownloadName(htmlDelivery.title)}-微信正文.html`} onClose={() => setHtmlDelivery(null)} />}
-      <div hidden={!sourceOpen} className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><SourceWorkspace value={markdown} active={sourceOpen} onCheckpoint={() => archive.checkpoint("替换或表格粘贴前的稿件")} onChange={(value) => { archive.beforeEdit(); setMarkdown(value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }}/><footer><span className="source-health"><small data-save-state={archive.status} role="status">{saveLabel}{archive.error ? ` · ${archive.error}` : ""}</small><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>
+      <div hidden={!sourceOpen} className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><SourceWorkspace value={markdown} active={sourceOpen} focusRange={sourceFocusRange} onCheckpoint={() => archive.checkpoint("替换或表格粘贴前的稿件")} onChange={(value) => { archive.beforeEdit(); setMarkdown(value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }}/><footer><span className="source-health"><small data-save-state={archive.status} role="status">{saveLabel}{archive.error ? ` · ${archive.error}` : ""}</small><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );
