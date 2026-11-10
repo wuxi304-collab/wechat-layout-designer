@@ -26,7 +26,7 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Build server renderer and run all regressions
+        run: npm test
       - name: Build GitHub Pages version
         run: npm run build:pages
-      - name: Run source and UI regression tests
-        run: node --test tests/*.test.mjs
