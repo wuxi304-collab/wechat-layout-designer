@@ -65,7 +65,7 @@ export function SourceWorkspace({ value, active = true, focusRange = null, onCha
       start: Math.min(value.length, Math.max(0, focusRange.start)),
       end: Math.min(value.length, Math.max(0, focusRange.end)),
     });
-  }, [active, focusRange, value]);
+  }, [active, focusRange]);
 
   useLayoutEffect(() => {
     if (previous.current !== value) {
