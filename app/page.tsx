@@ -882,8 +882,17 @@ export default function Home() {
   }
 
   function editSelectedBlock() {
+    // The AST uses normalized Markdown offsets. Never select an unrelated
+    // source span if Unicode/line-ending normalization changed the raw text.
+    if (markdown !== safeMarkdown) {
+      setSourceFocusRange(null);
+      setSourceOpen(true);
+      notify("原稿含未规范化字符，已打开编辑器；请清理字符后再精确定位");
+      return;
+    }
     const range = selected && selected.index >= 0 ? article.blocks[selected.index]?.sourceRange : null;
     if (!range) {
+      setSourceFocusRange(null);
       setSourceOpen(true);
       notify("已打开原稿；这一处暂无法精确定位");
       return;
