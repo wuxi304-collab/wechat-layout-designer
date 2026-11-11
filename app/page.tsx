@@ -32,6 +32,7 @@ import { closesFence, findMarkdownTitle, readAtxHeading, readFence, readMarkdown
 import { importDocumentFile } from "@/lib/editor/document-import";
 import { readSourceLineRanges, type SourceRange } from "@/lib/editor/source-navigation";
 import { writeRichClipboard } from "@/lib/editor/wechat-adapter";
+import { auditWechatArticle, summarizeWechatAudit, type WechatAuditIssue } from "@/lib/editor/wechat-audit";
 import { prepareWechatDelivery, type WechatDelivery } from "@/lib/editor/wechat-export";
 import { WechatHtmlDialog } from "./wechat-html-dialog";
 import { SourceWorkspace } from "./source-workspace";
@@ -689,19 +690,13 @@ export default function Home() {
     return [...new Set(["核心判断", ...matched, "结语行动"])].slice(0, 3);
   }, [article.title, safeMarkdown]);
   const filteredComponents = useMemo(() => components.filter((item) => `${item.phase}${item.kind}${item.detail}`.includes(componentQuery.trim())), [componentQuery]);
-  const diagnostics = useMemo(() => {
-    const items: string[] = [...encodingIssues, ...importWarnings];
-    if (!hasArticleBody) items.push("正文为空，请先补充稿件");
-    if (article.title === "未命名文章") items.push("未识别到标题：请将标题独占首行，或在前面添加 #");
-    if (article.title.length > 64) items.push("标题超过微信 64 字上限");
-    if (article.author.length > 8) items.push("作者超过微信 8 字上限");
-    if (/(?:```|~~~)\s*mermaid/i.test(markdown)) items.push("Mermaid 图需要转为图片");
-    if (/\[[^\]]*\]\(\s*\)/.test(markdown)) items.push("检测到空链接");
-    if (/!\[[^\]]*\]\(https?:\/\//.test(markdown)) items.push("外链图片发布前请转存微信素材库");
-    if (article.blocks.some((block) => block.type === "table" && block.headers.length > 4)) items.push("有表格超过 4 列，建议在手机预览检查，必要时拆表");
-    if (article.unclosedFence) items.push("代码块没有闭合，请核对围栏");
-    return items;
-  }, [article.author, article.blocks, article.title, article.unclosedFence, encodingIssues, hasArticleBody, importWarnings, markdown]);
+  const auditIssues = useMemo(() => auditWechatArticle({
+    markdown: safeMarkdown, title: article.title, author: article.author,
+    hasArticleBody, unclosedFence: article.unclosedFence, blocks: article.blocks,
+    encodingIssues, importWarnings,
+  }), [safeMarkdown, article, hasArticleBody, encodingIssues, importWarnings]);
+  const auditSummary = useMemo(() => summarizeWechatAudit(auditIssues), [auditIssues]);
+  const diagnostics = auditIssues.map((issue) => issue.message);
 
   useEffect(() => {
     if (!window.matchMedia("(max-width: 840px)").matches) return;
@@ -1192,15 +1187,22 @@ export default function Home() {
     }
   }
 
-  function buildDelivery() {
-    if (!hasArticleBody) {
-      setSourceOpen(true);
-      notify("正文为空，请先粘贴或导入稿件");
-      return;
+  function locateDeliveryIssue(issue: WechatAuditIssue) {
+    if (issue.sourceRange && markdown === safeMarkdown) {
+      setSourceFocusRange({ ...issue.sourceRange });
+    } else {
+      setSourceFocusRange(null);
+      if (issue.sourceRange) notify("原稿经过字符规范化，定位已降级为打开全文，请人工查找。");
     }
-    if (encodingIssues.length) {
-      setSourceOpen(true);
-      notify(`检测到 ${encodingIssues.length} 项编码风险，修正后再交付`);
+    setSourceOpen(true);
+  }
+
+  function buildDelivery() {
+    if (!auditSummary.canDeliver) {
+      setInspector("步骤");
+      setStage("交付");
+      setMobilePane("inspector");
+      notify(`有 ${auditSummary.blockers} 项阻断问题，请先在交付检查中定位修正`);
       return;
     }
     const source = articleRef.current;
@@ -1421,7 +1423,7 @@ export default function Home() {
             </article>
           </div>}
         </div>
-        <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{diagnostics.length ? `${diagnostics.length} 项兼容提醒` : "本地预检无提醒"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
+        <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{auditSummary.blockers ? `${auditSummary.blockers} 项阻断 · ${auditSummary.warnings} 项风险` : auditSummary.warnings ? `${auditSummary.warnings} 项风险待核对` : "本地预检无提醒"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
       </section>
 
       <aside className="inspector-panel" ref={inspectorPanelRef}>
@@ -1478,15 +1480,22 @@ export default function Home() {
         </div>}
 
         {inspector === "步骤" && stage === "交付" && <div className="inspector-content editorial-stage-content editorial-delivery">
-          <section className="design-score"><div className="score-ring"><strong>{diagnostics.length}</strong><small>项提醒</small></div><div><span>本地预检</span><p>微信公众号草稿和朋友圈显示需复核。</p></div></section>
+          <section className="design-score"><div className="score-ring"><strong>{auditSummary.blockers ? auditSummary.blockers : auditSummary.warnings}</strong><small>{auditSummary.blockers ? "项阻断" : "项风险"}</small></div><div><span>微信交付预检</span><p>{auditSummary.blockers ? "阻断问题处理前不能复制正文。" : auditSummary.warnings ? "可交付，但需要核对风险项。" : "本地结构检查通过；真实微信粘贴仍须核验。"}</p></div></section>
           <div className="delivery-shortcuts" aria-label="微信标题与作者复制">
             <button type="button" className={copiedField === "标题" ? "copied" : ""} onClick={() => copyPlainField(article.title, "标题")}><Icon name={copiedField === "标题" ? "check" : "copy"} size={15}/><span><b>{copiedField === "标题" ? "标题已复制" : "01 复制标题"}</b><small>{article.title.length}/64 字</small></span></button>
             <button type="button" className={copiedField === "作者" ? "copied" : ""} onClick={() => copyPlainField(article.author, "作者")}><Icon name={copiedField === "作者" ? "check" : "copy"} size={15}/><span><b>{copiedField === "作者" ? "作者已复制" : "02 复制作者"}</b><small>{article.author.length}/8 字</small></span></button>
           </div>
-          <button type="button" className="copy-delivery" onClick={copyArticle}><Icon name="copy"/>03 复制微信正文</button>
-          <button type="button" className="wechat-html-launch" onClick={openWechatHtml}><Icon name="document" size={17}/>微信 HTML 交付</button>
+          <button type="button" className="copy-delivery" onClick={copyArticle} disabled={!auditSummary.canDeliver} title={auditSummary.canDeliver ? "复制微信富文本正文" : "请先修正阻断问题"}><Icon name="copy"/>03 复制微信正文</button>
+          <button type="button" className="wechat-html-launch" onClick={openWechatHtml} disabled={!auditSummary.canDeliver}><Icon name="document" size={17}/>微信 HTML 交付</button>
           <section className="draft-markdown-delivery" aria-label="Markdown 原稿交付"><strong>Markdown 原稿</strong><p>保留原文、强调和结构，便于继续修改与存档。</p><div><button type="button" disabled={!markdown.trim()} onClick={copyMarkdown}>复制 Markdown</button><button type="button" onClick={downloadMarkdown}>下载 .md</button></div></section>
-          <section className="inspector-section compatibility-card"><div className="section-heading"><div><span>发布前复核</span><small>{structure.chapter} 个章节 · {article.blocks.length} 个正文块</small></div></div>{diagnostics.length > 0 && <ul className="editorial-warnings">{[...new Set(diagnostics)].map((item) => <li key={item}><Icon name="warning" size={15}/>{item}</li>)}</ul>}</section>
+          <section className="inspector-section compatibility-card" aria-label="微信交付检查结果">
+              <div className="section-heading"><div><span>发布前复核</span><small>{auditSummary.blockers} 项阻断 · {auditSummary.warnings} 项风险 · {article.blocks.length} 个正文块</small></div></div>
+              {auditIssues.length ? <ul className="wechat-audit-list">{auditIssues.map((issue) => <li key={issue.id} data-severity={issue.severity}>
+                <span className="wechat-audit-severity">{issue.severity === "blocker" ? "阻断" : "风险"}</span>
+                <div><strong>{issue.message}</strong><p>{issue.action}</p></div>
+                <button type="button" onClick={() => locateDeliveryIssue(issue)} aria-label={`定位修正：${issue.message}`}>定位修正</button>
+              </li>)}</ul> : <p className="editorial-quiet-note">本地语法与结构预检通过。无法替代微信后台粘贴及手机、朋友圈实测。</p>}
+            </section>
         </div>}
 
         {inspector === "步骤" && stage === "版式" && <div className="inspector-content editorial-stage-content">
@@ -1551,7 +1560,7 @@ export default function Home() {
 
       {historyOpen && <DraftHistoryDialog versions={versions} saveStatus={archive.error || saveLabel} onSave={saveVersion} onRestore={(id) => { archive.restoreCheckpoint(id); notify("已恢复原稿与版式，恢复前的稿件已保留"); }} onClose={() => setHistoryOpen(false)} />}
       {htmlDelivery && <WechatHtmlDialog delivery={htmlDelivery} filename={`${safeDownloadName(htmlDelivery.title)}-微信正文.html`} onClose={() => setHtmlDelivery(null)} />}
-      <div hidden={!sourceOpen} className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => setSourceOpen(false)} aria-label="关闭原稿"><Icon name="close"/></button></div></header><SourceWorkspace value={markdown} active={sourceOpen} focusRange={sourceFocusRange} onCheckpoint={() => archive.checkpoint("替换或表格粘贴前的稿件")} onChange={(value) => { archive.beforeEdit(); setMarkdown(value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }}/><footer><span className="source-health"><small data-save-state={archive.status} role="status">{saveLabel}{archive.error ? ` · ${archive.error}` : ""}</small><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>
+      <div hidden={!sourceOpen} className="source-overlay" role="dialog" aria-modal="true" aria-label="原稿编辑器"><div className="source-drawer"><header><div><span>内容源</span><strong>Markdown 原稿</strong></div><div className="source-actions"><button className="source-action clear-action" onClick={clearMarkdown} disabled={!markdown.trim()}><Icon name="close" size={14}/>清空</button><button className="source-action paste-action" onClick={pasteMarkdown}><Icon name="copy" size={14}/>一键粘贴并编排</button><button className="source-action analyze-action" onClick={analyzeAndArrange} disabled={!markdown.trim()}><Icon name="spark" size={14}/>重新分析</button><button className="source-action import-file" onClick={() => fileRef.current?.click()} disabled={importingFile} title="支持 Markdown、TXT、Word（.docx）和 PDF；PDF 最大 50MB、500页"><Icon name={importingFile ? "history" : "document"} size={14}/>{importingFile ? importProgress : "导入文件"}</button><button className="source-close" onClick={() => { setSourceOpen(false); setSourceFocusRange(null); }} aria-label="关闭原稿"><Icon name="close"/></button></div></header><SourceWorkspace value={markdown} active={sourceOpen} focusRange={sourceFocusRange} onCheckpoint={() => archive.checkpoint("替换或表格粘贴前的稿件")} onChange={(value) => { archive.beforeEdit(); setMarkdown(value); setSourceEncoding("UTF-8 · 手动编辑"); setImportWarnings([]); }}/><footer><span className="source-health"><small data-save-state={archive.status} role="status">{saveLabel}{archive.error ? ` · ${archive.error}` : ""}</small><b>{wordCount.toLocaleString()} 字</b><i className={encodingIssues.length ? "encoding-risk" : "encoding-safe"}>{sourceEncoding} · {encodingIssues.length ? `${encodingIssues.length} 项编码风险` : "编码正常"}</i><small className={article.title === "未命名文章" ? "title-missing" : "title-detected"}>{article.title === "未命名文章" ? "尚未识别标题" : `已识别：${article.title.length > 22 ? `${article.title.slice(0, 22)}…` : article.title}`} · 文件仅在本机解析</small>{importWarnings.length ? <small className="import-warning"><Icon name="warning" size={12}/>{importWarnings.join("；")}</small> : null}</span></footer></div></div>
       {toast && <div className="toast" role="status"><Icon name="check" size={17}/>{toast}</div>}
     </main>
   );
