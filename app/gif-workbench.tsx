@@ -7,13 +7,13 @@ import { inspectGifFile, type GifInspection } from "@/lib/editor/gif-inspector";
 type GifStyle = "industrial" | "comic-fusion" | "type-linked" | "clay-mascot" | "pixel-light" | "lenticular";
 type GifRatio = "16:9" | "4:3" | "1:1" | "3:4";
 
-const styles: Array<{ id: GifStyle; name: string; origin: string; detail: string }> = [
+const styles: Array<{ id: GifStyle; name: string; origin: string; detail: string; preview?: string }> = [
   { id: "industrial", name: "工业科普动态示意", origin: "自定义适配", detail: "材料截面、轧制工序、腐蚀机理、数据变化" },
-  { id: "comic-fusion", name: "漫画印刷整体融合", origin: "GIF Factory", detail: "人物、背景、标题作为整体设计" },
-  { id: "type-linked", name: "人物与字体联动", origin: "GIF Factory", detail: "主体动作与标题字形同步变化" },
-  { id: "clay-mascot", name: "粘土吉祥物", origin: "GIF Factory", detail: "适合品牌角色、产品与包装" },
-  { id: "pixel-light", name: "像素轻动效", origin: "GIF Factory", detail: "适合小图标、轻量表情和提示" },
-  { id: "lenticular", name: "双状态光栅卡", origin: "GIF Factory", detail: "适合两个状态、两种外观之间切换" },
+  { id: "comic-fusion", name: "漫画印刷整体融合", origin: "GIF Factory", detail: "人物、背景、标题作为整体设计", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/comic-fusion.gif" },
+  { id: "type-linked", name: "人物与字体联动", origin: "GIF Factory", detail: "主体动作与标题字形同步变化", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/type-linked.gif" },
+  { id: "clay-mascot", name: "粘土吉祥物", origin: "GIF Factory", detail: "适合品牌角色、产品与包装", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/clay-mascot.gif" },
+  { id: "pixel-light", name: "像素轻动效", origin: "GIF Factory", detail: "适合小图标、轻量表情和提示", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/pixel-light.gif" },
+  { id: "lenticular", name: "双状态光栅卡", origin: "GIF Factory", detail: "适合两个状态、两种外观之间切换", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/lenticular.gif" },
 ];
 
 const ratios: Array<{ value: GifRatio; label: string; dimensions: string }> = [
@@ -87,7 +87,7 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
       `画幅：${ratioText}。注意：GIF Factory 部分现成导出脚本默认方形 512×512，光栅卡默认 480×720；不要把方形预设冒充横版输出。若当前脚本不支持目标比例，先制作对应比例的分镜/图集，再使用适配的自定义合成流程。`,
       "动作：一个清晰、可读的核心动作；建议 4–6 秒，循环衔接自然，不用长静止帧凑时长。按画面复杂度控制帧数与体积。",
       overlayText.trim() ? `画面文字必须逐字准确：${overlayText.trim()}。除此之外不生成任何文字。` : "默认不在画面中生成文字，避免中文错字；图注由公众号排版工具后期添加。",
-      "事实约束：只使用稿件中明确出现的材料、牌号、标准、企业名称和数据；没有提供的参数、工艺、标识、Logo 一律不补造。企业 Logo 只能使用用户提供的官方原图。",
+      "事实约束：只使用稿件中明确出现的材料、牌号、标准、企业名称和数据；没有提供的参数、工艺、标识、Logo 一律不补造。企业 Logo 只能使用用户提供的官方原图。仅借鉴样例的视觉技法，不复刻样例中的受保护角色、IP、商标或作品造型。",
       "质量门禁：先出一张静态构图和一张动态小样；确认后再批量。导出后运行 review_gif.py 检查实际帧数、时长、透明边缘和逐帧问题；输出帧图与检查报告。技术检查通过不等于审美验收通过。",
       "交付：最终 GIF、原始文件、帧图/联系表、时长/帧数/画幅/文件大小报告。不要只给预览图。",
       context ? `文章上下文（只作为语义参考）：\n${context}` : "",
@@ -158,6 +158,12 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
           <span>{item.name}</span><small>{item.origin} · {item.detail}</small>
         </button>)}
       </div>
+      <div className="gif-selected-style-preview">
+        {selectedStyle.preview
+          ? <img src={selectedStyle.preview} alt={`${selectedStyle.name}动态样例`} loading="lazy"/>
+          : <div className="gif-industrial-preview" aria-hidden="true"><span>304</span><i/><b>INDUSTRIAL MOTION</b></div>}
+        <div><b>{selectedStyle.name}</b><small>{selectedStyle.preview ? "上游公开动图样例 · 仅作技法参考" : "本项目自定义方向 · 钢铁材料与工艺动态示意"}</small></div>
+      </div>
       <label className="gif-field-label" htmlFor="gif-ratio">画幅建议</label>
       <select id="gif-ratio" value={ratio} onChange={(event) => setRatio(event.target.value as GifRatio)}>
         {ratios.map((item) => <option key={item.value} value={item.value}>{item.label} · {item.dimensions}</option>)}
@@ -171,7 +177,7 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
 
     <section className="gif-workbench-section">
       <header><div><b>02 · 本地预览与预检</b><small>导入 GIF 后读取容器信息，不修改原文件</small></div><span>本机处理</span></header>
-      <label className="gif-upload-zone">
+      <label className="gif-upload-zone" onDragOver={(event) => { event.preventDefault(); event.currentTarget.dataset.dragging = "true"; }} onDragLeave={(event) => { delete event.currentTarget.dataset.dragging; }} onDrop={(event) => { event.preventDefault(); delete event.currentTarget.dataset.dragging; void chooseFile(event.dataTransfer.files?.[0]); }}>
         <input type="file" accept=".gif,image/gif" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }}/>
         <strong>{file ? "更换 GIF 文件" : "选择或拖入 GIF 文件"}</strong>
         <small>仅本地读取，不会上传服务器；单文件预检上限 30 MB</small>
