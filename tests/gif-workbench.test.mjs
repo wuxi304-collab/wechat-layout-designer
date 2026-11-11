@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { inspectGifBuffer } from "../lib/editor/gif-inspector.ts";
 
-const bytes = (...parts) => Uint8Array.from(parts.flat());
+const bytes = (...parts) => Uint8Array.from(parts.flat(Infinity));
 const ascii = (value) => Array.from(value, (char) => char.charCodeAt(0));
 const logicalScreen = [2, 0, 1, 0, 0x80, 0, 0];
 const globalPalette = [0, 0, 0, 255, 255, 255];
@@ -53,28 +53,30 @@ test("the GIF tab is integrated without adding a sixth workflow stage", async ()
     readFile(new URL("../app/gif-workbench.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/editorial-workflow.css", import.meta.url), "utf8"),
   ]);
-  assert.match(page, /type StageKey = "稿件" \\| "编排" \\| "版式" \\| "封面" \\| "交付"/);
-  assert.match(page, /type InspectorTab = "步骤" \\| "规范" \\| "品牌" \\| "动图"/);
-  assert.match(page, /\\["步骤", "规范", "品牌", "动图"\\] as InspectorTab\\[\\]/);
-  assert.match(page, /<GifWorkbench articleTitle=\\{article\\.title\\}/);
-  assert.match(page, /function insertGif\\(url: string, caption: string\\)/);
-  assert.match(page, /archive\\.checkpoint\\("插入动图前的稿件"\\)/);
-  assert.match(page, /setMarkdown/);
-  assert.match(component, /使用 \\$pixel-gif-sticker-pack/);
-  assert.match(component, /inspectGifFile\\(next\\)/);
-  assert.match(component, /url\\.protocol !== "https:"/);
-  assert.match(component, /不会上传服务器/);
-  assert.match(component, /外链图片可能被微信过滤/);
-  assert.match(css, /\\.gif-workbench/);
-  assert.match(css, /grid-template-columns: repeat\\(4, minmax\\(0, 1fr\\)\\)/);
+  assert.ok(page.includes('type StageKey = "稿件" | "编排" | "版式" | "封面" | "交付"'));
+  assert.ok(page.includes('type InspectorTab = "步骤" | "规范" | "品牌" | "动图"'));
+  assert.ok(page.includes('["步骤", "规范", "品牌", "动图"] as InspectorTab[]'));
+  assert.ok(page.includes('<GifWorkbench articleTitle={article.title}'));
+  assert.ok(page.includes("function insertGif(url: string, caption: string)"));
+  assert.ok(page.includes('archive.checkpoint("插入动图前的稿件")'));
+  assert.ok(page.includes("setMarkdown("));
+  assert.ok(component.includes("使用 $pixel-gif-sticker-pack"));
+  assert.ok(component.includes("inspectGifFile(next)"));
+  assert.ok(component.includes('url.protocol !== "https:"'));
+  assert.ok(component.includes("不会上传服务器"));
+  assert.ok(component.includes("外链图片可能被微信过滤"));
+  assert.ok(css.includes(".gif-workbench"));
+  assert.ok(css.includes("grid-template-columns: repeat(4, minmax(0, 1fr))"));
 });
 
 test("the prompt distinguishes the custom industrial preset from GIF Factory built-in styles", async () => {
   const component = await readFile(new URL("../app/gif-workbench.tsx", import.meta.url), "utf8");
-  assert.match(component, /工业科普动态示意/);
-  assert.match(component, /自定义适配/);
-  assert.match(component, /GIF Factory 风格库/);
-  assert.match(component, /默认方形 512×512/);
-  assert.match(component, /review_gif\\.py/);
-  assert.match(component, /技术检查通过不等于审美验收通过/);
+  for (const phrase of [
+    "工业科普动态示意",
+    "自定义适配",
+    "GIF Factory 风格库",
+    "默认方形 512×512",
+    "review_gif.py",
+    "技术检查通过不等于审美验收通过",
+  ]) assert.ok(component.includes(phrase), phrase);
 });
