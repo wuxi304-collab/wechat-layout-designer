@@ -65,6 +65,10 @@ test("the GIF tab is integrated without adding a sixth workflow stage", async ()
   assert.ok(component.includes('url.protocol !== "https:"'));
   assert.ok(component.includes("不会上传服务器"));
   assert.ok(component.includes("外链图片可能被微信过滤"));
+  assert.ok(component.includes("raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/pixel-light.gif"));
+  assert.ok(component.includes("onDrop="));
+  assert.ok(css.includes(".gif-selected-style-preview"));
+  assert.ok(css.includes("[data-dragging=\"true\"]"));
   assert.ok(css.includes(".gif-workbench"));
   assert.ok(css.includes("grid-template-columns: repeat(4, minmax(0, 1fr))"));
 });
