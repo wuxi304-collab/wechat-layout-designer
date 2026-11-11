@@ -1261,16 +1261,6 @@
   border-radius: 8px;
   background: #f8fafb;
 }
-.gif-selected-style-preview > img,
-.gif-industrial-preview {
-  display: block;
-  width: 116px;
-  height: 78px;
-  overflow: hidden;
-  border-radius: 6px;
-  object-fit: cover;
-  background: #e8edf1;
-}
 .gif-selected-style-preview > div:last-child {
   display: grid;
   gap: 5px;
@@ -1285,36 +1275,63 @@
   font-size: 10px;
   line-height: 1.55;
 }
-.gif-industrial-preview {
+.gif-selected-style-preview > div:last-child a {
+  color: #9b4140;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.gif-style-preview-art {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 116px;
+  height: 78px;
+  overflow: hidden;
+  border-radius: 6px;
   background:
     linear-gradient(125deg, transparent 42%, rgba(192, 61, 57, .86) 42.5% 46%, transparent 46.5%),
     repeating-linear-gradient(0deg, #243c51 0 8px, #314d64 8px 10px, #1a3043 10px 17px);
   color: #fff;
 }
-.gif-industrial-preview span {
+.gif-style-preview-art[data-style="pixel-light"] {
+  background-color: #172b40;
+  background-image: linear-gradient(90deg, transparent 50%, rgba(255,255,255,.08) 50%), linear-gradient(rgba(255,255,255,.08) 50%, transparent 50%);
+  background-size: 12px 12px;
+}
+.gif-style-preview-art[data-style="comic-fusion"] {
+  background: radial-gradient(#263e55 1.1px, transparent 1.4px) 0 0 / 7px 7px, linear-gradient(135deg, #f0d9c4, #bd5149);
+}
+.gif-style-preview-art[data-style="type-linked"] {
+  background: linear-gradient(125deg, #172e44, #536f84 55%, #b94a46);
+}
+.gif-style-preview-art[data-style="clay-mascot"] {
+  background: radial-gradient(circle at 35% 45%, #f2cba8 0 18px, transparent 19px), radial-gradient(circle at 64% 60%, #e49b79 0 16px, transparent 17px), #e8d9c6;
+}
+.gif-style-preview-art[data-style="lenticular"] {
+  background: repeating-linear-gradient(90deg, #1d354b 0 5px, #8b9baa 5px 8px, #c34e4b 8px 10px);
+}
+.gif-style-preview-art > span {
   position: relative;
   z-index: 1;
   font-family: Georgia, serif;
-  font-size: 28px;
+  font-size: 25px;
   font-weight: 800;
   letter-spacing: -.08em;
   text-shadow: 0 2px 8px rgba(0,0,0,.25);
 }
-.gif-industrial-preview i {
+.gif-style-preview-art > i {
   position: absolute;
   inset: 12px 8px;
   border: 1px solid rgba(255,255,255,.35);
   border-radius: 4px;
 }
-.gif-industrial-preview b {
+.gif-style-preview-art > b {
   position: absolute;
   right: 6px;
   bottom: 5px;
-  color: rgba(255,255,255,.72);
+  color: rgba(255,255,255,.78);
   font-size: 6px;
   letter-spacing: .12em;
 }
