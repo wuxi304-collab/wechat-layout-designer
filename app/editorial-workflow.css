@@ -465,3 +465,59 @@
 .style-craft-guide > p { font: 400 14px/1.8 var(--font-ui); }
 .style-craft-guide .manuscript-page p { font-size: 16px; line-height: 2; }
 .style-craft-guide > small { color: var(--stage-muted); font: 400 12px/1.7 var(--font-ui); }
+
+
+/* VNext · 微信交付分级检查：紧凑、可定位、手机端触控安全 */
+.wechat-audit-list { display: grid; gap: 10px; list-style: none; margin: 12px 0 0; padding: 0; }
+.wechat-audit-list li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px 10px;
+  border: 1px solid var(--article-line, #d8e1e6);
+  border-radius: 10px;
+  padding: 11px;
+  background: var(--article-paper, #fff);
+  min-width: 0;
+}
+.wechat-audit-list li[data-severity="blocker"] { border-inline-start: 3px solid #a73535; }
+.wechat-audit-list li[data-severity="warning"] { border-inline-start: 3px solid #a27738; }
+.wechat-audit-severity {
+  color: #8d2727;
+  font: 700 12px/1.6 var(--font-ui, system-ui);
+  white-space: nowrap;
+}
+.wechat-audit-list li[data-severity="warning"] .wechat-audit-severity { color: #856018; }
+.wechat-audit-list li > div { min-width: 0; }
+.wechat-audit-list li strong {
+  display: block;
+  font: 650 13px/1.5 var(--font-ui, system-ui);
+  color: var(--article-ink, #17324b);
+  overflow-wrap: anywhere;
+}
+.wechat-audit-list li p {
+  margin: 3px 0 0;
+  font: 400 12px/1.65 var(--font-ui, system-ui);
+  color: var(--stage-muted, #607383);
+  overflow-wrap: anywhere;
+}
+.wechat-audit-list li > button {
+  grid-column: 2;
+  justify-self: start;
+  min-height: 34px;
+  min-width: 82px;
+  padding: 5px 12px;
+  border: 1px solid var(--article-line, #d8e1e6);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--article-ink, #17324b);
+  font: 600 12px/1.4 var(--font-ui, system-ui);
+  cursor: pointer;
+}
+.wechat-audit-list li > button:focus-visible { outline: 2px solid var(--article-accent, #b23a42); outline-offset: 3px; }
+.editorial-delivery .copy-delivery:disabled,
+.editorial-delivery .wechat-html-launch:disabled { opacity: .48; cursor: not-allowed; filter: grayscale(.3); }
+@media (max-width: 840px) {
+  .wechat-audit-list li { padding: 12px; }
+  .wechat-audit-list li > button { min-height: 44px; }
+}
