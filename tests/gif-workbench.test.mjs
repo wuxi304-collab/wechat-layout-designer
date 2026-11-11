@@ -40,7 +40,7 @@ test("uses a conservative 100ms fallback when frames have no graphic control ext
 });
 
 test("rejects non-GIF, truncated blocks and missing trailer instead of inventing metadata", () => {
-  assert.throws(() => inspectGifBuffer(Uint8Array.from([1, 2, 3, 4, 5, 6])), /不是 GIF/);
+  assert.throws(() => inspectGifBuffer(Uint8Array.from([1, 2, 3, 4, 5, 6])), /不是完整 GIF|不是 GIF/);
   const truncated = makeGif();
   assert.throws(() => inspectGifBuffer(truncated.slice(0, -4)), /不完整|截断|结束标记/);
   const missingTrailer = makeGif().slice(0, -1);
