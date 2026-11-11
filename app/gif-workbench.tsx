@@ -65,14 +65,8 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
   const normalizedUrl = secureImageUrl(imageUrl);
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl("");
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
 
   const prompt = useMemo(() => {
     const purposeText = purpose === "article"
@@ -117,15 +111,18 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
     setMetadata(null);
     if (next.size > 30 * 1024 * 1024) {
       setFile(null);
+      setPreviewUrl("");
       setError("单个 GIF 超过 30 MB，本地预检已停止。请先在本机压缩后再导入。");
       return;
     }
     try {
       const inspected = await inspectGifFile(next);
       setFile(next);
+      setPreviewUrl(URL.createObjectURL(next));
       setMetadata(inspected);
     } catch (reason) {
       setFile(null);
+      setPreviewUrl("");
       setError(reason instanceof Error ? reason.message : "GIF 读取失败，请检查文件。");
     }
   }
