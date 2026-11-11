@@ -7,13 +7,13 @@ import { inspectGifFile, type GifInspection } from "@/lib/editor/gif-inspector";
 type GifStyle = "industrial" | "comic-fusion" | "type-linked" | "clay-mascot" | "pixel-light" | "lenticular";
 type GifRatio = "16:9" | "4:3" | "1:1" | "3:4";
 
-const styles: Array<{ id: GifStyle; name: string; origin: string; detail: string; preview?: string }> = [
+const styles: Array<{ id: GifStyle; name: string; origin: string; detail: string; sampleUrl?: string }> = [
   { id: "industrial", name: "工业科普动态示意", origin: "自定义适配", detail: "材料截面、轧制工序、腐蚀机理、数据变化" },
-  { id: "comic-fusion", name: "漫画印刷整体融合", origin: "GIF Factory", detail: "人物、背景、标题作为整体设计", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/comic-fusion.gif" },
-  { id: "type-linked", name: "人物与字体联动", origin: "GIF Factory", detail: "主体动作与标题字形同步变化", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/type-linked.gif" },
-  { id: "clay-mascot", name: "粘土吉祥物", origin: "GIF Factory", detail: "适合品牌角色、产品与包装", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/clay-mascot.gif" },
-  { id: "pixel-light", name: "像素轻动效", origin: "GIF Factory", detail: "适合小图标、轻量表情和提示", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/pixel-light.gif" },
-  { id: "lenticular", name: "双状态光栅卡", origin: "GIF Factory", detail: "适合两个状态、两种外观之间切换", preview: "https://raw.githubusercontent.com/WoYun520/gif-factory/main/docs/previews/lenticular.gif" },
+  { id: "comic-fusion", name: "漫画印刷整体融合", origin: "GIF Factory", detail: "人物、背景、标题作为整体设计", sampleUrl: "https://github.com/WoYun520/gif-factory/blob/main/docs/previews/comic-fusion.gif" },
+  { id: "type-linked", name: "人物与字体联动", origin: "GIF Factory", detail: "主体动作与标题字形同步变化", sampleUrl: "https://github.com/WoYun520/gif-factory/blob/main/docs/previews/type-linked.gif" },
+  { id: "clay-mascot", name: "粘土吉祥物", origin: "GIF Factory", detail: "适合品牌角色、产品与包装", sampleUrl: "https://github.com/WoYun520/gif-factory/blob/main/docs/previews/clay-mascot.gif" },
+  { id: "pixel-light", name: "像素轻动效", origin: "GIF Factory", detail: "适合小图标、轻量表情和提示", sampleUrl: "https://github.com/WoYun520/gif-factory/blob/main/docs/previews/pixel-light.gif" },
+  { id: "lenticular", name: "双状态光栅卡", origin: "GIF Factory", detail: "适合两个状态、两种外观之间切换", sampleUrl: "https://github.com/WoYun520/gif-factory/blob/main/docs/previews/lenticular.gif" },
 ];
 
 const ratios: Array<{ value: GifRatio; label: string; dimensions: string }> = [
@@ -159,10 +159,8 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
         </button>)}
       </div>
       <div className="gif-selected-style-preview">
-        {selectedStyle.preview
-          ? <img src={selectedStyle.preview} alt={`${selectedStyle.name}动态样例`} loading="lazy"/>
-          : <div className="gif-industrial-preview" aria-hidden="true"><span>304</span><i/><b>INDUSTRIAL MOTION</b></div>}
-        <div><b>{selectedStyle.name}</b><small>{selectedStyle.preview ? "上游公开动图样例 · 仅作技法参考" : "本项目自定义方向 · 钢铁材料与工艺动态示意"}</small></div>
+        <div className={`gif-style-preview-art gif-style-preview-art--${style}`} data-style={style} aria-hidden="true"><span>{style === "industrial" ? "304" : selectedStyle.name.slice(0, 4)}</span><i/><b>{style === "industrial" ? "INDUSTRIAL MOTION" : "STYLE STUDY"}</b></div>
+        <div><b>{selectedStyle.name}</b><small>{style === "industrial" ? "本项目自定义方向 · 钢铁材料与工艺动态示意" : "风格示意，不是上游实际样片"}</small>{selectedStyle.sampleUrl && <a href={selectedStyle.sampleUrl} target="_blank" rel="noreferrer">查看 GIF Factory 上游样例 ↗</a>}</div>
       </div>
       <label className="gif-field-label" htmlFor="gif-ratio">画幅建议</label>
       <select id="gif-ratio" value={ratio} onChange={(event) => setRatio(event.target.value as GifRatio)}>
