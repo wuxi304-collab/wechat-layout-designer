@@ -960,7 +960,7 @@ export default function Home() {
   }
 
   function insertGif(url: string, caption: string) {
-    const safeCaption = caption.replace(/[\]\\r\\n]/g, " ").trim() || "文章动图";
+    const safeCaption = caption.replaceAll("]", " ").replace(/[\r\n]/g, " ").trim() || "文章动图";
     const snippet = `![${safeCaption}](${url})`;
     const selectedRange = markdown === safeMarkdown && selected && selected.index >= 0
       ? article.blocks[selected.index]?.sourceRange
@@ -969,7 +969,7 @@ export default function Home() {
     const before = markdown.slice(0, insertionAt).trimEnd();
     const after = markdown.slice(insertionAt).trimStart();
     archive.checkpoint("插入动图前的稿件");
-    setMarkdown(`${before}\\n\\n${snippet}${after ? `\\n\\n${after}` : "\\n"}`);
+    setMarkdown(`${before}\n\n${snippet}${after ? `\n\n${after}` : "\n"}`);
     setStage("编排");
     setInspector("动图");
     setInspectorOpen(true);
