@@ -43,6 +43,7 @@ import type { DraftSnapshot } from "@/lib/editor/draft-storage";
 import { useDraftArchive } from "./use-draft-archive";
 import { DraftHistoryDialog } from "./draft-history-dialog";
 import { spreadsheetFromClipboard } from "@/lib/editor/spreadsheet-paste";
+import { GifWorkbench } from "./gif-workbench";
 
 type IconName =
   | "brand" | "document" | "structure" | "style" | "assets" | "check"
@@ -196,7 +197,7 @@ const sampleMarkdown = `# 当成本拼不过青拓之后，我们还能卖什么
 - 把加工风险提前暴露
 - 把售后责任写进流程`;
 
-type InspectorTab = "步骤" | "规范" | "品牌";
+type InspectorTab = "步骤" | "规范" | "品牌" | "动图";
 type StageKey = "稿件" | "编排" | "版式" | "封面" | "交付";
 type MobilePane = "canvas" | "inspector";
 type AlertKind = "note" | "tip" | "important" | "warning" | "caution";
@@ -958,6 +959,25 @@ export default function Home() {
     notify(`已插入${kind}组件，内容结构已更新`);
   }
 
+  function insertGif(url: string, caption: string) {
+    const safeCaption = caption.replaceAll("]", " ").replace(/[\r\n]/g, " ").trim() || "文章动图";
+    const snippet = `![${safeCaption}](${url})`;
+    const selectedRange = markdown === safeMarkdown && selected && selected.index >= 0
+      ? article.blocks[selected.index]?.sourceRange
+      : undefined;
+    const insertionAt = selectedRange?.end ?? markdown.length;
+    const before = markdown.slice(0, insertionAt).trimEnd();
+    const after = markdown.slice(insertionAt).trimStart();
+    archive.checkpoint("插入动图前的稿件");
+    setMarkdown(`${before}\n\n${snippet}${after ? `\n\n${after}` : "\n"}`);
+    setStage("编排");
+    setInspector("动图");
+    setInspectorOpen(true);
+    setSelected(null);
+    setMobilePane("inspector");
+    notify("动图引用已插入原稿；请确认图片地址已在公众号素材体系中可用");
+  }
+
   function captureStyle() {
     if (!selected) return notify("请先在画布中选择一个内容块");
     setCapturedType(selected.type);
@@ -1442,7 +1462,7 @@ export default function Home() {
       <aside id="studio-inspector" className="inspector-panel" ref={inspectorPanelRef}>
         <div className="inspector-overlay-heading"><span><Icon name={currentStage.icon} size={17}/>编辑设置 · {inspector === "步骤" ? stage : inspector}</span><button type="button" onClick={() => setInspectorOpen(false)} aria-label="关闭设置面板"><Icon name="close" size={18}/></button></div>
         <div className="inspector-tabs editorial-inspector-tabs" role="group" aria-label="工作台面板">
-          {(["步骤", "规范", "品牌"] as InspectorTab[]).map((tab) => <button key={tab} type="button" aria-pressed={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><span>{tab === "步骤" ? stage : tab}</span><i aria-hidden="true"/></button>)}
+          {(["步骤", "规范", "品牌", "动图"] as InspectorTab[]).map((tab) => <button key={tab} type="button" data-inspector-tab={tab} aria-pressed={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><span>{tab === "步骤" ? stage : tab}</span><i aria-hidden="true"/></button>)}
         </div>
         {inspector === "步骤" && <header className="editorial-stage-brief" data-workflow-stage={stage}>
           <div className="editorial-stage-index"><Icon name={currentStage.icon} size={16}/><span>设计流程</span><b>{String(currentStageIndex + 1).padStart(2, "0")} / 05</b></div>
@@ -1564,6 +1584,8 @@ export default function Home() {
             <p className="security-note">生产环境优先使用固定出口 IP 的安全桥接服务；当前站点也支持直连模式，但仍须满足微信公众平台的接口权限与 IP 白名单要求。</p>
           </section>
         </div>}
+
+        {inspector === "动图" && <GifWorkbench articleTitle={article.title} articleContext={safeMarkdown.slice(0, 900)} onInsert={insertGif} />}
 
         {inspector === "品牌" && <div className="inspector-content"><section className="brand-preview-card"><span className="brand-big-avatar">钢</span><div><small>当前品牌套件</small><strong>钢铁私塾</strong><p>工业理性 · 专业克制 · 有判断</p></div></section><section className="inspector-section brand-settings"><div className="section-heading"><div><span>品牌基因</span><small>每一篇内容自动继承</small></div></div><label><span>主色</span><i style={{ background: currentTheme.palette.accent }}/>当前主题<button onClick={() => activateStage("版式")}>修改</button></label><label><span>正文</span><i style={{ background: currentTheme.palette.ink }}/>墨黑<button onClick={() => activateStage("版式")}>修改</button></label><label><span>署名</span><b>主编：钢铁私塾 唐淼</b><button onClick={() => setSourceOpen(true)}>编辑</button></label><label><span>结尾</span><b>品牌宣言 + 交流声明</b></label></section><section className="inspector-section"><div className="section-heading"><div><span>品牌一致性</span><small>本稿与品牌套件对照</small></div></div><p className="editorial-quiet-note">当前用色：{currentTheme.name}；稿件署名：{article.author}。</p></section></div>}
       </aside>
