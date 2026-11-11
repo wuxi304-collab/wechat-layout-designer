@@ -566,6 +566,7 @@ export default function Home() {
   const [theme, setTheme] = useState<ThemeKey>("national");
   const [markdownStyle, setMarkdownStyle] = useState<MarkdownStyleKey>("jiangnan");
   const [inspector, setInspector] = useState<InspectorTab>("步骤");
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [stage, setStage] = useState<StageKey>("稿件");
   const [mobilePane, setMobilePane] = useState<MobilePane>("inspector");
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -739,6 +740,15 @@ export default function Home() {
     };
   }, [typesetOpen]);
 
+  useEffect(() => {
+    if (!inspectorOpen) return;
+    function dismissInspector(event: KeyboardEvent) {
+      if (event.key === "Escape") setInspectorOpen(false);
+    }
+    document.addEventListener("keydown", dismissInspector);
+    return () => document.removeEventListener("keydown", dismissInspector);
+  }, [inspectorOpen]);
+
   useLayoutEffect(() => {
     if (!studioRef.current) return;
     const media = gsap.matchMedia();
@@ -858,6 +868,7 @@ export default function Home() {
   function activateStage(nextStage: StageKey) {
     setStage(nextStage);
     setInspector("步骤");
+    setInspectorOpen(true);
     setTypesetOpen(false);
     setSelected(null);
     setMobilePane("inspector");
@@ -1287,7 +1298,7 @@ export default function Home() {
   }
 
   return (
-    <main ref={studioRef} className={`studio-shell editorial-studio mobile-pane-${mobilePane} ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
+    <main ref={studioRef} className={`studio-shell editorial-studio ${inspectorOpen ? "inspector-is-open" : ""} mobile-pane-${mobilePane} ${focusMode ? "studio-focus-mode" : ""} ${typewriterMode ? "studio-typewriter-mode" : ""} ${workspaceView === "final" ? "studio-final-view" : ""}`} style={{ ...themeCssVariables(currentTheme, false), "--article-dark-accent": currentTheme.dark.accent, "--article-dark-ink": currentTheme.dark.ink, "--article-dark-paper": currentTheme.dark.paper, "--article-dark-muted": currentTheme.dark.muted, "--article-dark-line": currentTheme.dark.line, "--article-dark-soft": currentTheme.dark.soft, "--article-size": `${fontSize}px`, "--article-leading": lineHeight, "--article-title-size": `${articleTitleSize}px`, "--article-tracking": `${articleTracking}em` } as React.CSSProperties}>
       <header className="topbar">
         <div className="product-mark"><span className="mark-seal">排</span><div><strong><span className="brand-title-desktop">公众号排版设计师</span><span className="brand-title-mobile">钢铁私塾排版</span></strong><small>江南编辑书房 · 文章有骨</small></div></div>
         <div className="document-identity"><span className="save-indicator" data-save-state={archive.status} role="status"><i />{saveLabel}</span><span className="document-name">{article.title}</span><button className="icon-button" aria-label="编辑当前原稿" onClick={() => setSourceOpen(true)}><Icon name="chevron" size={15}/></button></div>
@@ -1346,6 +1357,7 @@ export default function Home() {
             <button className={preview === "desktop" ? "selected" : ""} aria-pressed={preview === "desktop"} onClick={() => setPreview("desktop")} aria-label="桌面预览"><Icon name="desktop"/></button><span/>
             <button className="source-view-button" onClick={() => setSourceOpen(true)}>查看原稿</button>
             </>}
+            <button type="button" className="workspace-inspector-toggle" aria-controls="studio-inspector" aria-expanded={inspectorOpen} onClick={() => { setInspectorOpen((value) => !value); setTypesetOpen(false); }}><Icon name="style" size={16}/>{inspectorOpen ? "收起设置" : "设计设置"}</button>
           </div>
         </div>
 
@@ -1426,7 +1438,9 @@ export default function Home() {
         <div className="statusbar"><span><i className={diagnostics.length ? "status-warn" : "status-good"}/>{auditSummary.blockers ? `${auditSummary.blockers} 项阻断 · ${auditSummary.warnings} 项风险` : auditSummary.warnings ? `${auditSummary.warnings} 项风险待核对` : "本地预检无提醒"}</span><span>{wordCount.toLocaleString()} 字 · 预计阅读 {Math.max(1, Math.ceil(wordCount / 260))} 分钟</span><span>{focusMode ? "专注校订" : typewriterMode ? "居中阅读" : `${versions.length} 个恢复点`}</span></div>
       </section>
 
-      <aside className="inspector-panel" ref={inspectorPanelRef}>
+      {inspectorOpen && <button type="button" className="inspector-scrim" aria-label="关闭设置面板，返回正文预览" onClick={() => setInspectorOpen(false)} />}
+      <aside id="studio-inspector" className="inspector-panel" ref={inspectorPanelRef}>
+        <div className="inspector-overlay-heading"><span><Icon name={currentStage.icon} size={17}/>编辑设置 · {inspector === "步骤" ? stage : inspector}</span><button type="button" onClick={() => setInspectorOpen(false)} aria-label="关闭设置面板"><Icon name="close" size={18}/></button></div>
         <div className="inspector-tabs editorial-inspector-tabs" role="group" aria-label="工作台面板">
           {(["步骤", "规范", "品牌"] as InspectorTab[]).map((tab) => <button key={tab} type="button" aria-pressed={inspector === tab} className={inspector === tab ? "active" : ""} onClick={() => setInspector(tab)}><span>{tab === "步骤" ? stage : tab}</span><i aria-hidden="true"/></button>)}
         </div>
