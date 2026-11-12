@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { writePlainClipboard } from "@/lib/editor/clipboard";
-import { inspectGifFile, type GifInspection } from "@/lib/editor/gif-inspector";
+import { inspectGifBuffer, inspectGifFile, type GifInspection } from "@/lib/editor/gif-inspector";
+import { createLocalTwoStateGif, twoStateSizes, type TwoStateSize } from "@/lib/editor/gif-two-state";
 
 type GifStyle = "industrial" | "comic-fusion" | "type-linked" | "clay-mascot" | "pixel-light" | "lenticular";
 type GifRatio = "16:9" | "4:3" | "1:1" | "3:4";
@@ -59,6 +60,16 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
   const [copied, setCopied] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [caption, setCaption] = useState("文章动态配图");
+  const [stateA, setStateA] = useState<File | null>(null);
+  const [stateB, setStateB] = useState<File | null>(null);
+  const [stateAPreview, setStateAPreview] = useState("");
+  const [stateBPreview, setStateBPreview] = useState("");
+  const [nativeSize, setNativeSize] = useState<TwoStateSize>("article");
+  const [nativeSeconds, setNativeSeconds] = useState<4 | 6>(4);
+  const [nativeTitle, setNativeTitle] = useState("");
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const [nativeError, setNativeError] = useState("");
+  const [nativeArtifact, setNativeArtifact] = useState<{ url: string; name: string; inspected: GifInspection } | null>(null);
 
   const selectedStyle = styles.find((item) => item.id === style) ?? styles[0];
   const selectedRatio = ratios.find((item) => item.value === ratio) ?? ratios[0];
@@ -67,6 +78,24 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (!stateA) { setStateAPreview(""); return; }
+    const url = URL.createObjectURL(stateA);
+    setStateAPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [stateA]);
+
+  useEffect(() => {
+    if (!stateB) { setStateBPreview(""); return; }
+    const url = URL.createObjectURL(stateB);
+    setStateBPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [stateB]);
+
+  useEffect(() => {
+    return () => { if (nativeArtifact?.url) URL.revokeObjectURL(nativeArtifact.url); };
+  }, [nativeArtifact]);
 
   const prompt = useMemo(() => {
     const purposeText = purpose === "article"
@@ -127,6 +156,32 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
     }
   }
 
+  async function renderNativeGif() {
+    if (!stateA || !stateB || nativeBusy) return;
+    setNativeError("");
+    setNativeArtifact(null);
+    setNativeBusy(true);
+    try {
+      // Yield before CPU-heavy LZW encoding so the busy state can paint.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      const data = await createLocalTwoStateGif(stateA, stateB, nativeSize, nativeSeconds, nativeTitle);
+      if (data.byteLength > 30 * 1024 * 1024) {
+        throw new Error("生成的 GIF 超过 30 MB，本地预检无法处理。请使用较小画幅或精简素材。");
+      }
+      const inspected = inspectGifBuffer(data);
+      const prefix = (articleTitle || "动图").replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 38);
+      const name = `${prefix || "动图"}-双状态-${nativeSize}.gif`;
+      const output = new File([new Uint8Array(data)], name, { type: "image/gif" });
+      const url = URL.createObjectURL(output);
+      setNativeArtifact({ url, name, inspected });
+      await chooseFile(output); // Reuses the existing GIF preflight/preview.
+    } catch (reason) {
+      setNativeError(reason instanceof Error ? reason.message : "浏览器 GIF 合成失败，请更换图片后重试。");
+    } finally {
+      setNativeBusy(false);
+    }
+  }
+
   async function copyPrompt() {
     try {
       await writePlainClipboard(prompt);
@@ -173,8 +228,38 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
       <p className="gif-workbench-note">说明：本网页不直接调用 GIF Factory 的图像生成环境；此处生成制作指令。横版正文动图需适配横向画幅，不能直接套用其方形表情包导出预设。</p>
     </section>
 
+    <section className="gif-workbench-section gif-native-maker" aria-label="双图变画 GIF 制作">
+      <header><div><b>02 · 双图变画 · 直接生成 GIF</b><small>基于 GIF Factory 的双状态流程，网页内完成条纹切换与真实 GIF 编码</small></div><span>本机直出</span></header>
+      <p className="gif-workbench-note">状态 A → 竖向细条切换 → 状态 B → 反向切换 → 状态 A。两张图必须是相同构图比例，建议主体位置一致。本功能不会生图、变脸或补画缺失元素。</p>
+      <div className="gif-native-inputs">
+        {([{ file: stateA, preview: stateAPreview, label: "状态 A", setFile: setStateA }, { file: stateB, preview: stateBPreview, label: "状态 B", setFile: setStateB }] as const).map((item) =>
+          <label key={item.label} className="gif-native-image-input">
+            <input type="file" accept="image/png,image/jpeg,image/webp" disabled={nativeBusy} onChange={(event) => { item.setFile(event.target.files?.[0] ?? null); setNativeArtifact(null); setNativeError(""); event.currentTarget.value = ""; }}/>
+            <span className="gif-native-thumb">{item.preview ? <img src={item.preview} alt={`${item.label} 静态原图预览`}/> : <span aria-hidden="true">+</span>}</span>
+            <b>{item.label}</b><small>{item.file ? item.file.name : "选择 PNG / JPG / WebP"}</small>
+          </label>)}
+      </div>
+      <label className="gif-field-label" htmlFor="gif-native-size">目标画幅</label>
+      <select id="gif-native-size" value={nativeSize} onChange={(event) => { setNativeSize(event.target.value as TwoStateSize); setNativeArtifact(null); }} disabled={nativeBusy}>
+        {(Object.entries(twoStateSizes) as Array<[TwoStateSize, typeof twoStateSizes[TwoStateSize]]>).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}
+      </select>
+      <label className="gif-field-label" htmlFor="gif-native-seconds">循环时长</label>
+      <select id="gif-native-seconds" value={nativeSeconds} onChange={(event) => { setNativeSeconds(Number(event.target.value) as 4 | 6); setNativeArtifact(null); }} disabled={nativeBusy}>
+        <option value={4}>4 秒 · 阅读配图</option><option value={6}>6 秒 · 光栅卡节奏</option>
+      </select>
+      <label className="gif-field-label" htmlFor="gif-native-title">固定底部标题（可留空，精确排印）</label>
+      <input id="gif-native-title" maxLength={26} value={nativeTitle} onChange={(event) => { setNativeTitle(event.target.value); setNativeArtifact(null); }} disabled={nativeBusy} placeholder="例如：304L 和 316L 的差异"/>
+      <button type="button" className="gif-primary-action" disabled={!stateA || !stateB || nativeBusy} onClick={() => void renderNativeGif()}>{nativeBusy ? "正在本机编码 GIF…" : "生成双状态 GIF"}</button>
+      {nativeError && <p className="gif-error" role="alert">{nativeError}</p>}
+      {nativeArtifact && <div className="gif-native-result" role="status">
+        <img src={nativeArtifact.url} alt="本机生成的双图变画 GIF 动画预览"/>
+        <div><strong>GIF 已在本机生成</strong><p>{nativeArtifact.inspected.width} × {nativeArtifact.inspected.height} · {nativeArtifact.inspected.frameCount} 帧 · {formatDuration(nativeArtifact.inspected.durationMs)} · {formatBytes(nativeArtifact.inspected.fileSizeBytes)}</p><a href={nativeArtifact.url} download={nativeArtifact.name}>下载生成的 GIF</a></div>
+      </div>}
+      <p className="gif-workbench-note">使用共享 256 色调色板，照片渐变可能有色阶损失；当前为不透明全画幅动画，不支持逐帧人物骨骼动作。浏览器原图不上传。生成后自动进入下方容器预检；要在公众号正文使用，请先上传微信素材并取得真实地址。</p>
+    </section>
+
     <section className="gif-workbench-section">
-      <header><div><b>02 · 本地预览与预检</b><small>导入 GIF 后读取容器信息，不修改原文件</small></div><span>本机处理</span></header>
+      <header><div><b>03 · 本地预览与预检</b><small>导入 GIF 后读取容器信息，不修改原文件</small></div><span>本机处理</span></header>
       <label className="gif-upload-zone" onDragOver={(event) => { event.preventDefault(); event.currentTarget.dataset.dragging = "true"; }} onDragLeave={(event) => { delete event.currentTarget.dataset.dragging; }} onDrop={(event) => { event.preventDefault(); delete event.currentTarget.dataset.dragging; void chooseFile(event.dataTransfer.files?.[0]); }}>
         <input type="file" accept=".gif,image/gif" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }}/>
         <strong>{file ? "更换 GIF 文件" : "选择或拖入 GIF 文件"}</strong>
@@ -200,7 +285,7 @@ export function GifWorkbench({ articleTitle, articleContext, onInsert }: {
     </section>
 
     <section className="gif-workbench-section">
-      <header><div><b>03 · 插入文章</b><small>上传到微信素材后，再把可访问地址写入原稿</small></div><span>正文集成</span></header>
+      <header><div><b>04 · 插入文章</b><small>上传到微信素材后，再把可访问地址写入原稿</small></div><span>正文集成</span></header>
       <label className="gif-field-label" htmlFor="gif-caption">图片说明 / 替代文字</label>
       <input id="gif-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={80} placeholder="例如：双相不锈钢显微组织变化"/>
       <label className="gif-field-label" htmlFor="gif-image-url">已上传 GIF 的 HTTPS 图片地址</label>
